@@ -1,0 +1,266 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0f172a">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Bike & Trail">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<title>Bike & Trail</title>
+<style>
+:root{--bg:#0f172a;--card:#1e293b;--line:#334155;--txt:#e2e8f0;--mut:#94a3b8;--run:#f97316;--ride:#38bdf8;--ok:#4ade80;--ko:#f87171}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--txt);font:15px/1.45 -apple-system,system-ui,Segoe UI,Roboto,sans-serif;padding:env(safe-area-inset-top) 16px calc(70px + env(safe-area-inset-bottom))}
+header{padding:16px 0 8px}
+h1{margin:0;font-size:20px}
+.sub{color:var(--mut);font-size:13px}
+nav{position:fixed;left:0;right:0;bottom:0;display:flex;background:#0b1222;border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom)}
+nav button{flex:1;padding:14px 0;background:none;border:0;color:var(--mut);font-size:14px}
+nav button.on{color:#fff;font-weight:600}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px;margin:12px 0}
+.card h2{margin:0 0 8px;font-size:15px;color:var(--mut);font-weight:600}
+.kpis{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.kpi b{display:block;font-size:22px}
+.run{color:var(--run)}.ride{color:var(--ride)}
+.row{display:flex;justify-content:space-between;gap:10px;padding:10px 0;border-bottom:1px solid var(--line)}
+.row:last-child{border:0}
+.row .n{font-weight:600}
+.row .m{color:var(--mut);font-size:13px}
+.row .r{text-align:right;white-space:nowrap;font-size:13px}
+input,select,button.b{width:100%;padding:10px;margin:4px 0 10px;border-radius:8px;border:1px solid var(--line);background:#0b1222;color:var(--txt);font-size:15px}
+button.b{background:#2563eb;border-color:#2563eb;color:#fff;font-weight:600;margin-bottom:8px}
+button.b.alt{background:transparent;border-color:var(--line);color:var(--txt)}
+label{font-size:13px;color:var(--mut)}
+#log{white-space:pre-wrap;font-size:13px;color:var(--mut);min-height:20px}
+a{color:var(--ride)}
+.ok{color:var(--ok)}.ko{color:var(--ko)}
+ol{padding-left:20px;margin:6px 0}
+small{color:var(--mut)}
+</style>
+</head>
+<body>
+<header>
+  <h1>Bike &amp; Trail</h1>
+  <div class="sub" id="status"></div>
+</header>
+<main id="view"></main>
+<nav>
+  <button data-t="sum">Résumé</button>
+  <button data-t="list">Activités</button>
+  <button data-t="cfg">Connexion</button>
+</nav>
+
+<script>
+const $ = s => document.querySelector(s);
+const KC = 'bt_cfg', KA = 'bt_acts';
+const load = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) || d } catch (e) { return d } };
+const save = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)) } catch (e) { log('Stockage local plein ou indisponible.') } };
+let cfg = load(KC, {}), acts = load(KA, []), tab = 'sum', filt = 'all';
+
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const grp = t => { t = (t || '').replace(/\s/g, ''); if (/Run/i.test(t)) return 'run'; if (/Ride|Bike|Cycl/i.test(t)) return 'ride'; return 'other' };
+const fmtH = s => { const h = Math.floor(s / 3600), m = Math.round((s % 3600) / 60); return h + 'h' + String(m).padStart(2, '0') };
+const fmtD = d => { const x = new Date(d); return x.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: '2-digit', timeZone: 'UTC' }) };
+const weekStart = s => { const d = new Date(s); const k = (d.getUTCDay() + 6) % 7; d.setUTCDate(d.getUTCDate() - k); d.setUTCHours(0, 0, 0, 0); return d.getTime() };
+function log(m) { const e = $('#log'); if (e) e.textContent = m }
+
+function norm(a) {
+  return { id: a.id, name: a.name, type: a.sport_type || a.type, date: a.start_date_local || a.start_date,
+    dist: a.distance || 0, time: a.moving_time || 0, elev: a.total_elevation_gain || 0,
+    hr: a.average_heartrate || null, hrmax: a.max_heartrate || null };
+}
+function merge(list, dropDemo) {
+  const m = new Map(acts.filter(a => !(dropDemo && String(a.id).startsWith('demo'))).map(a => [String(a.id), a]));
+  list.forEach(a => m.set(String(a.id), a));
+  acts = [...m.values()].sort((a, b) => b.date.localeCompare(a.date));
+  save(KA, acts);
+}
+
+/* ---------- Strava API ---------- */
+async function tokenCall(params) {
+  const r = await fetch('https://www.strava.com/oauth/token', {
+    method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ client_id: cfg.id, client_secret: cfg.secret, ...params })
+  });
+  if (!r.ok) throw new Error('Strava /oauth/token : HTTP ' + r.status + ' ' + (await r.text()).slice(0, 200));
+  return r.json();
+}
+const netHint = e => (e instanceof TypeError)
+  ? 'Requête bloquée par le navigateur (probablement CORS ou réseau). C’est exactement ce que ce test devait révéler : il faudra alors passer par un petit serveur intermédiaire.\n' + e.message
+  : e.message;
+
+function saveCfg() {
+  cfg = { id: $('#cid').value.trim(), secret: $('#csec').value.trim(), refresh: $('#cref').value.trim() };
+  save(KC, cfg); log('Réglages enregistrés sur cet appareil uniquement.');
+}
+function authLink() {
+  saveCfg(); if (!cfg.id) return log('Renseignez d’abord le Client ID.');
+  const u = 'https://www.strava.com/oauth/authorize?client_id=' + encodeURIComponent(cfg.id) +
+    '&response_type=code&redirect_uri=http://localhost&approval_prompt=force&scope=read,activity:read_all';
+  $('#auth').innerHTML = '<a href="' + u + '" target="_blank" rel="noopener">1) Ouvrir l’autorisation Strava</a>';
+}
+async function exchange() {
+  saveCfg(); let c = $('#ccode').value.trim(); const m = c.match(/code=([^&\s]+)/); if (m) c = m[1];
+  if (!cfg.id || !cfg.secret || !c) return log('Client ID, Client Secret et code requis.');
+  try {
+    log('Échange du code…');
+    const j = await tokenCall({ grant_type: 'authorization_code', code: c });
+    cfg.refresh = j.refresh_token; save(KC, cfg); $('#cref').value = cfg.refresh;
+    log('Connecté : refresh token enregistré. Vous pouvez synchroniser.');
+  } catch (e) { log(netHint(e)) }
+}
+async function sync() {
+  saveCfg(); if (!cfg.id || !cfg.secret || !cfg.refresh) return log('Renseignez Client ID, Secret et refresh token (voir étapes).');
+  try {
+    log('Authentification…');
+    const j = await tokenCall({ grant_type: 'refresh_token', refresh_token: cfg.refresh });
+    cfg.refresh = j.refresh_token; save(KC, cfg);
+    let all = [];
+    for (let p = 1; p <= 10; p++) {
+      log('Récupération page ' + p + '…');
+      const r = await fetch('https://www.strava.com/api/v3/athlete/activities?per_page=200&page=' + p, { headers: { Authorization: 'Bearer ' + j.access_token } });
+      if (!r.ok) throw new Error('API activités : HTTP ' + r.status + ' ' + (await r.text()).slice(0, 200));
+      const a = await r.json(); all = all.concat(a); if (a.length < 200) break;
+    }
+    merge(all.map(norm), true);
+    log(all.length + ' activités importées depuis Strava.'); paintStatus();
+  } catch (e) { log(netHint(e)) }
+}
+
+/* ---------- Import CSV (export Strava : activities.csv) ---------- */
+function parseCSV(t) {
+  const rows = []; let r = [], f = '', q = false;
+  for (let i = 0; i < t.length; i++) {
+    const c = t[i];
+    if (q) { if (c === '"') { if (t[i + 1] === '"') { f += '"'; i++ } else q = false } else f += c }
+    else if (c === '"') q = true;
+    else if (c === ',') { r.push(f); f = '' }
+    else if (c === '\n') { r.push(f); rows.push(r); r = []; f = '' }
+    else if (c !== '\r') f += c;
+  }
+  if (f || r.length) { r.push(f); rows.push(r) }
+  return rows;
+}
+const MONTHS = { jan: 0, feb: 1, fev: 1, mar: 2, apr: 3, avr: 3, may: 4, mai: 4, aug: 7, aou: 7, sep: 8, oct: 9, nov: 10, dec: 11 };
+function monthIdx(s) {
+  s = s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f.]/g, '');
+  if (s.startsWith('juil') || s.startsWith('jul')) return 6;
+  if (s.startsWith('juin') || s.startsWith('jun')) return 5;
+  return MONTHS[s.slice(0, 3)];
+}
+function parseDate(s) {
+  let m = s.match(/^([A-Za-zéûôî.]+)\s+(\d{1,2}),\s+(\d{4}),\s+(\d{1,2}):(\d{2}):(\d{2})\s*(AM|PM)?/i), d;
+  if (m) { let h = +m[4]; if (m[7]) { h = h % 12 + (m[7].toUpperCase() === 'PM' ? 12 : 0) } d = Date.UTC(+m[3], monthIdx(m[1]), +m[2], h, +m[5], +m[6]) }
+  else if ((m = s.match(/^(\d{1,2})\s+([^\s,]+)\s+(\d{4}),?\s+(\d{1,2}):(\d{2}):(\d{2})/))) d = Date.UTC(+m[3], monthIdx(m[2]), +m[1], +m[4], +m[5], +m[6]);
+  else d = Date.parse(s);
+  return isNaN(d) ? null : new Date(d).toISOString();
+}
+async function importCSV(inp) {
+  const f = inp.files[0]; if (!f) return;
+  try {
+    const rows = parseCSV(await f.text()); const H = rows[0].map(h => h.trim());
+    const idx = n => H.lastIndexOf(n);
+    const c = { id: idx('Activity ID'), date: idx('Activity Date'), name: idx('Activity Name'), type: idx('Activity Type'),
+      dist: idx('Distance'), time: idx('Moving Time'), elev: idx('Elevation Gain'), hr: idx('Average Heart Rate'), hrmax: idx('Max Heart Rate') };
+    if (c.id < 0 || c.date < 0 || c.type < 0) throw new Error('Colonnes inattendues. En-têtes lus : ' + H.slice(0, 8).join(' | '));
+    const list = [];
+    for (const r of rows.slice(1)) {
+      if (!r[c.id]) continue; const d = parseDate(r[c.date]); if (!d) continue;
+      const n = k => parseFloat(String(r[c[k]] || '').replace(',', '.')) || 0;
+      list.push({ id: r[c.id], name: r[c.name], type: r[c.type], date: d, dist: n('dist'), time: n('time'), elev: n('elev'), hr: n('hr') || null, hrmax: n('hrmax') || null });
+    }
+    merge(list, true); log(list.length + ' activités importées depuis le CSV.'); paintStatus();
+  } catch (e) { log('Import CSV : ' + e.message) }
+  inp.value = '';
+}
+
+/* ---------- Démo & reset ---------- */
+function demo() {
+  const list = [], now = Date.now(); let k = 0;
+  for (let w = 40; w >= 0; w--) {
+    const base = now - w * 7 * 864e5;
+    [[1, 'run'], [3, 'run'], [6, 'ride'], [5, w % 2 ? 'run' : 'ride']].forEach(([d, g]) => {
+      const dist = g === 'run' ? 8000 + Math.random() * 14000 : 30000 + Math.random() * 70000;
+      list.push({ id: 'demo' + (k++), name: g === 'run' ? 'Sortie trail' : 'Sortie gravel', type: g === 'run' ? 'TrailRun' : 'GravelRide',
+        date: new Date(base - d * 864e5).toISOString(), dist, time: dist / (g === 'run' ? 2.6 : 7.5), elev: dist * (g === 'run' ? 0.04 : 0.012),
+        hr: g === 'run' ? 140 + Math.random() * 20 : null, hrmax: null });
+    });
+  }
+  merge(list, false); log('Données de démonstration chargées.'); paintStatus();
+}
+function wipe() { if (confirm('Effacer activités et réglages de cet appareil ?')) { acts = []; cfg = {}; localStorage.removeItem(KA); localStorage.removeItem(KC); paint() } }
+
+/* ---------- Vues ---------- */
+function chart() {
+  const cur = weekStart(new Date().toISOString()), N = 26, wk = [];
+  for (let i = N - 1; i >= 0; i--) wk.push(cur - i * 7 * 864e5);
+  const map = new Map(wk.map(t => [t, { run: 0, ride: 0 }]));
+  acts.forEach(a => { const m = map.get(weekStart(a.date)); if (!m) return; const g = grp(a.type); if (g === 'run') m.run += a.time / 3600; else if (g === 'ride') m.ride += a.time / 3600 });
+  const v = [...map.values()], max = Math.max(1, ...v.map(x => x.run + x.ride)), W = 600, H = 170, bw = W / N;
+  let s = '';
+  v.forEach((x, i) => {
+    const hr = x.run / max * (H - 20), hb = x.ride / max * (H - 20), X = i * bw + 2;
+    s += '<rect x="' + X + '" y="' + (H - hb) + '" width="' + (bw - 4) + '" height="' + hb + '" fill="var(--ride)"/>' +
+      '<rect x="' + X + '" y="' + (H - hb - hr) + '" width="' + (bw - 4) + '" height="' + hr + '" fill="var(--run)"/>';
+  });
+  return '<svg viewBox="0 0 ' + W + ' ' + (H + 4) + '" width="100%"><text x="0" y="12" fill="var(--mut)" font-size="12">max ' + max.toFixed(1) + ' h/sem.</text>' + s + '</svg>';
+}
+function agg(list, g) {
+  const l = list.filter(a => grp(a.type) === g);
+  return { n: l.length, km: l.reduce((s, a) => s + a.dist, 0) / 1000, h: l.reduce((s, a) => s + a.time, 0), d: l.reduce((s, a) => s + a.elev, 0) };
+}
+function vSum() {
+  if (!acts.length) return '<div class="card">Aucune activité. Allez dans <b>Connexion</b> pour importer depuis Strava, un CSV, ou charger la démo.</div>';
+  const last = acts.filter(a => Date.now() - Date.parse(a.date) <= 28 * 864e5);
+  const r = agg(last, 'run'), b = agg(last, 'ride');
+  const runs = acts.filter(a => grp(a.type) === 'run'), withHr = runs.filter(a => a.hr).length;
+  const types = {}; acts.forEach(a => types[a.type] = (types[a.type] || 0) + 1);
+  const pct = runs.length ? Math.round(withHr / runs.length * 100) : 0;
+  return '<div class="card"><h2>28 derniers jours</h2><div class="kpis">' +
+    '<div class="kpi"><span class="run">Course</span><b>' + r.km.toFixed(0) + ' km</b><small>' + fmtH(r.h) + ' · ' + r.d.toFixed(0) + ' m D+ · ' + r.n + ' sorties</small></div>' +
+    '<div class="kpi"><span class="ride">Vélo</span><b>' + b.km.toFixed(0) + ' km</b><small>' + fmtH(b.h) + ' · ' + b.d.toFixed(0) + ' m D+ · ' + b.n + ' sorties</small></div></div></div>' +
+    '<div class="card"><h2>Heures par semaine (26 sem.) <span class="run">■ course</span> <span class="ride">■ vélo</span></h2>' + chart() + '</div>' +
+    '<div class="card"><h2>Contrôle de l’import</h2>' +
+    '<div>' + acts.length + ' activités · du ' + fmtD(acts[acts.length - 1].date) + ' au ' + fmtD(acts[0].date) + '</div>' +
+    '<div>Courses avec FC : <b class="' + (pct > 80 ? 'ok' : 'ko') + '">' + withHr + '/' + runs.length + ' (' + pct + ' %)</b></div>' +
+    '<div><small>Types : ' + Object.entries(types).map(([k, v]) => esc(k) + ' ' + v).join(', ') + '</small></div></div>';
+}
+function vList() {
+  const l = acts.filter(a => filt === 'all' || grp(a.type) === filt).slice(0, 150);
+  return '<select onchange="filt=this.value;paint()">' + [['all', 'Tout'], ['run', 'Course à pied'], ['ride', 'Vélo']].map(([v, t]) => '<option value="' + v + '"' + (filt === v ? ' selected' : '') + '>' + t + '</option>').join('') + '</select>' +
+    '<div class="card">' + (l.map(a => '<div class="row"><div><div class="n ' + grp(a.type) + '">' + esc(a.name) + '</div><div class="m">' + fmtD(a.date) + ' · ' + esc(a.type) + '</div></div>' +
+      '<div class="r">' + (a.dist / 1000).toFixed(1) + ' km · ' + fmtH(a.time) + '<br>' + Math.round(a.elev) + ' m D+' + (a.hr ? ' · ' + Math.round(a.hr) + ' bpm' : '') + '</div></div>').join('') || 'Rien à afficher.') + '</div>';
+}
+function vCfg() {
+  return '<div class="card"><h2>Connexion Strava (API)</h2><ol><small>' +
+    '<li>Créez une application sur strava.com/settings/api (domaine de rappel : <b>localhost</b>).</li>' +
+    '<li>Saisissez ci-dessous Client ID et Client Secret, puis « Lien d’autorisation ».</li>' +
+    '<li>Acceptez : Strava redirige vers une page localhost qui ne charge pas, c’est normal. Copiez l’adresse complète (ou la valeur de <i>code=</i>) dans le champ « Code ».</li>' +
+    '<li>« Échanger le code », puis « Synchroniser ».</li></small></ol>' +
+    '<label>Client ID</label><input id="cid" inputmode="numeric" value="' + esc(cfg.id) + '">' +
+    '<label>Client Secret</label><input id="csec" type="password" value="' + esc(cfg.secret) + '">' +
+    '<button class="b alt" onclick="authLink()">Lien d’autorisation</button><div id="auth"></div>' +
+    '<label>Code (ou adresse localhost complète)</label><input id="ccode">' +
+    '<button class="b alt" onclick="exchange()">Échanger le code</button>' +
+    '<label>Refresh token</label><input id="cref" type="password" value="' + esc(cfg.refresh) + '">' +
+    '<button class="b" onclick="sync()">Synchroniser Strava</button>' +
+    '<button class="b alt" onclick="saveCfg()">Enregistrer les réglages</button></div>' +
+    '<div class="card"><h2>Plan B : export Strava</h2><small>Strava &gt; Paramètres &gt; Mon compte &gt; Télécharger ou supprimer votre compte. Dans l’archive reçue par e-mail, prenez <b>activities.csv</b>.</small>' +
+    '<input type="file" accept=".csv,text/csv" onchange="importCSV(this)"></div>' +
+    '<div class="card"><h2>Autres</h2><button class="b alt" onclick="demo()">Charger des données de démo</button><button class="b alt" onclick="wipe()">Tout effacer</button></div>' +
+    '<div class="card"><div id="log"></div></div>';
+}
+function paintStatus() { $('#status').textContent = acts.length ? acts.length + ' activités en mémoire' : 'Aucune donnée' }
+function paint() {
+  document.querySelectorAll('nav button').forEach(b => b.classList.toggle('on', b.dataset.t === tab));
+  $('#view').innerHTML = tab === 'sum' ? vSum() : tab === 'list' ? vList() : vCfg(); paintStatus();
+}
+document.querySelectorAll('nav button').forEach(b => b.onclick = () => { tab = b.dataset.t; paint() });
+paint();
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+</script>
+</body>
+</html>

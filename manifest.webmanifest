@@ -1,0 +1,14 @@
+{
+  "name": "Bike & Trail",
+  "short_name": "Bike & Trail",
+  "description": "Visualisation de mes activités Strava (course et vélo)",
+  "start_url": ".",
+  "scope": ".",
+  "display": "standalone",
+  "background_color": "#0f172a",
+  "theme_color": "#0f172a",
+  "lang": "fr",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}
