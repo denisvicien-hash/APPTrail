@@ -69,18 +69,23 @@ ol,ul{padding-left:20px;margin:6px 0}
 
 <script>
 const $ = s => document.querySelector(s);
-const KC = 'bt_cfg', KA = 'bt_acts', KG = 'bt_goals', KP = 'bt_plan', KF = 'bt_prof';
+const KC = 'bt_cfg', KA = 'bt_acts', KG = 'bt_goals', KP = 'bt_plan', KF = 'bt_prof', KB = 'bt_abs';
 const load = (k, d) => { try { const v = JSON.parse(localStorage.getItem(k)); return v === null || v === undefined ? d : v } catch (e) { return d } };
 const save = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)) } catch (e) { log('Stockage local plein ou indisponible.') } };
-let cfg = load(KC, {}), acts = load(KA, []), goals = load(KG, null), plan = load(KP, null), prof = load(KF, {}), tab = 'home', filt = 'all';
+let cfg = load(KC, {}), acts = load(KA, []), goals = load(KG, null), plan = load(KP, null), prof = load(KF, {}), absences = load(KB, null), tab = 'home', filt = 'all';
 const DAY = 864e5, WK = 7 * DAY;
 
 if (!goals) {
   goals = [
-    { id: 'g1', name: 'Montagn’hard 42 km', type: 'trail', date: '2027-05-16', runKm: 42, rideKm: 0, elev: '', confirmed: false },
-    { id: 'g2', name: 'Gravel & trail', type: 'combo', date: '2027-09-18', runKm: 21, rideKm: 125, elev: '', confirmed: false }
+    { id: 'g1', name: 'Montagn’hard 42 km', type: 'trail', date: '2027-05-16', runKm: 42, rideKm: 0, elev: '', prio: 'A', confirmed: false },
+    { id: 'g2', name: 'Gravel & trail', type: 'combo', date: '2027-09-18', runKm: 21, rideKm: 125, elev: '', prio: 'A', confirmed: false },
+    { id: 'g3', name: 'Korrikei (Pays basque)', type: 'trail', date: '2026-11-22', runKm: 22, rideKm: 0, elev: '', prio: 'B', confirmed: true }
   ];
   save(KG, goals);
+}
+if (!absences) {
+  absences = [{ id: 'a1', name: 'Philippines', start: '2027-02-08', end: '2027-03-08', runPct: 50, bike: false, confirmed: false }];
+  save(KB, absences);
 }
 
 /* ---------- Outils ---------- */
@@ -240,7 +245,7 @@ function demo() {
 }
 function wipe() {
   if (!confirm('Effacer activités, objectifs, plan et réglages de cet appareil ?')) return;
-  [KA, KC, KG, KP, KF].forEach(k => localStorage.removeItem(k)); location.reload();
+  [KA, KC, KG, KP, KF, KB, 'bt_mig3'].forEach(k => localStorage.removeItem(k)); location.reload();
 }
 
 /* ---------- Moteur de plan (règles) ---------- */
@@ -268,65 +273,107 @@ function qualityText(o) {
   }
   return { t: 'Seuil : 3 × 10 min', x: `Allure proche du semi-marathon (soutenue mais contrôlée), 2 min de récupération entre les blocs.` };
 }
+const prioOf = g => g.prio || 'A';
+function raceRow(r) {
+  const p = prioOf(r);
+  const txt = r.type === 'combo' ? r.rideKm + ' km de vélo puis ' + r.runKm + ' km de trail' : r.type === 'ride' ? r.rideKm + ' km à vélo' : r.runKm + ' km';
+  const x = p === 'A' ? 'Partez prudemment, mangez et buvez tôt, gardez de la marge pour la fin.'
+    : p === 'B' ? 'Course de préparation : allure contrôlée, objectif sensations plutôt que chrono.'
+    : 'Course d’entraînement : utilisez-la comme sortie longue, sans affûtage.';
+  return { d: fmtD(r.date), t: (p === 'A' ? 'COURSE : ' : 'Course : ') + r.name, km: +r.runKm || 0, txt, race: true, prio: p, x };
+}
 function buildWeek(o) {
-  const g = o.goal, kind = o.kind;
+  const g = o.goal, kind = o.kind, ab = o.ab;
   const ratio = (+g.elev > 0 && +g.runKm > 0) ? g.elev / g.runKm : 0;
   const dplus = (km, f) => ratio ? Math.round(km * ratio * f / 50) * 50 : 0;
   let runs = [];
-  if (kind === 'post') {
+  if (ab && ab.runPct === 0) {
+    runs = [];
+  } else if (kind === 'post') {
     const e = Math.round(o.vol / 2);
     runs = [
       { d: 'Mardi', t: 'Footing très facile', km: e, x: 'Allure lente, uniquement aux sensations.' },
-      { d: 'Samedi', t: 'Footing facile ou marche active', km: Math.round(o.vol) - e, x: '' }];
+      { d: 'Samedi', t: 'Footing facile ou marche active', km: Math.max(0, Math.round(o.vol) - e), x: '' }];
   } else if (kind === 'race') {
     const e = Math.round(o.vol / 2);
     runs = [
       { d: 'Mardi', t: 'Footing + 4 lignes droites', km: e, x: '30 à 40 min, jambes légères.' },
-      { d: 'Jeudi', t: 'Footing de décrassage', km: Math.round(o.vol) - e, x: '20 à 30 min tranquilles.' }];
-    const txt = g.type === 'combo' ? g.rideKm + ' km de vélo puis ' + g.runKm + ' km de trail' : g.type === 'ride' ? g.rideKm + ' km à vélo' : g.runKm + ' km';
-    runs.push({ d: fmtD(g.date), t: 'COURSE : ' + g.name, km: 0, txt, race: true, x: 'Partez prudemment, mangez et buvez tôt, gardez de la marge pour la fin.' });
+      { d: 'Jeudi', t: 'Footing de décrassage', km: Math.max(0, Math.round(o.vol) - e), x: '20 à 30 min tranquilles.' },
+      raceRow(g)];
   } else {
+    const easy = kind === 'recup' || !!ab || !!o.pre;
     const q = Math.round(o.vol * 0.27), l = Math.round(o.lg);
     const e = Math.max(5, Math.round(o.vol) - q - l);
-    const easy = kind === 'recup';
-    const fq = easy ? { t: 'Footing facile', x: 'Semaine allégée : tout en endurance, on récupère.' } : qualityText(o);
+    const why = ab ? 'Pendant le voyage : footings à l’aise, sans objectif de séance.' : o.pre ? 'Petite semaine avant une course : tout en endurance.' : 'Semaine allégée : tout en endurance, on récupère.';
+    const fq = easy ? { t: 'Footing facile', x: why } : qualityText(o);
     let lx, lt;
-    if (kind === 'base') { lt = 'Sortie longue facile'; lx = 'Allure conversationnelle, terrain varié.'; }
+    if (easy) { lt = 'Sortie longue réduite'; lx = 'Plus courte que d’habitude, en endurance.'; }
+    else if (kind === 'base') { lt = 'Sortie longue facile'; lx = 'Allure conversationnelle, terrain varié.'; }
     else if (kind === 'spec') { lt = 'Sortie longue spécifique'; lx = 'Terrain vallonné, travaillez les descentes, dernier tiers à allure course. Testez votre ravitaillement.'; }
-    else if (kind === 'taper') { lt = 'Sortie longue allégée'; lx = 'Plaisir et fraîcheur, pas de fatigue supplémentaire.'; }
-    else { lt = 'Sortie longue réduite'; lx = 'Plus courte que d’habitude, en endurance.'; }
+    else { lt = 'Sortie longue allégée'; lx = 'Plaisir et fraîcheur, pas de fatigue supplémentaire.'; }
     const dp = dplus(l, kind === 'spec' ? 0.9 : kind === 'base' ? 0.5 : 0.6);
     if (dp) lx += ' Objectif ≈ ' + dp + ' m D+.';
     runs = [
       { d: 'Mardi', t: fq.t, km: q, x: fq.x },
       { d: 'Jeudi', t: 'Footing facile en nature', km: e, x: 'Allure conversationnelle. Terrain souple si possible.' },
       { d: 'Samedi ou dimanche', t: lt, km: l, x: lx }];
+    const m = (o.minors || [])[0];
+    if (m) {
+      const rr = raceRow(m);
+      if (prioOf(m) === 'B') runs = [
+        { d: 'Mardi', t: 'Footing + 4 lignes droites', km: Math.max(5, Math.round(o.vol * 0.18)), x: '30 à 40 min, jambes légères.' },
+        { d: 'Jeudi', t: 'Footing léger', km: Math.max(4, Math.round(o.vol * 0.14)), x: '20 à 30 min tranquilles.' }, rr];
+      else runs = [runs[0], runs[1], rr];
+    }
   }
-  const vol = runs.filter(r => !r.race).reduce((s, r) => s + r.km, 0);
-  const bikeMin = Math.round(o.bm / 5) * 5;
-  const brick = g.rideKm > 0 && g.runKm > 0 && kind === 'spec' && o.w >= 3 && o.w <= 8 && o.w % 2 === 1;
-  return { t: o.t, w: o.w, gid: g.id, gname: g.name, kind, phase: o.phase, vol, runs, bikeMin, bikeKm: Math.round(bikeMin / 60 * 22), brick };
+  const vol = runs.reduce((s, r) => s + (r.km || 0), 0);
+  let bikeMin = Math.round(o.bm / 5) * 5; if (ab && !ab.bike) bikeMin = 0;
+  const brick = !ab && g.rideKm > 0 && g.runKm > 0 && kind === 'spec' && o.w >= 3 && o.w <= 8 && o.w % 2 === 1;
+  return { t: o.t, w: o.w, gid: g.id, gname: g.name, kind, phase: o.phase, vol, runs, bikeMin, bikeKm: Math.round(bikeMin / 60 * 22), brick, note: o.note || '' };
+}
+function absWeek(t) {
+  let best = null, partial = null;
+  for (const a of absences) {
+    const s = Date.parse(a.start + 'T00:00:00Z'), e = Date.parse(a.end + 'T00:00:00Z') + DAY;
+    const ov = Math.max(0, Math.min(e, t + WK) - Math.max(s, t)) / DAY;
+    if (ov >= 4) { if (!best || ov > best.ov) best = { a, ov } } else if (ov > 0) partial = a;
+  }
+  return { ab: best ? best.a : null, partial };
 }
 function genPlan(from) {
   const gs = goals.filter(g => g.date).map(g => ({ ...g, t: weekStart(g.date + 'T00:00:00Z') })).sort((a, b) => a.t - b.t);
   const out = []; if (!gs.length) return out;
+  const mains = gs.filter(g => prioOf(g) === 'A');
   const st = startStats();
-  let base = st.vol, long = st.long, bike = st.bike, since = 0, sp = 0;
+  let base = st.vol, long = st.long, bike = st.bike, since = 0, sp = 0, wasAbs = false, lastAbs = '';
   const end = gs[gs.length - 1].t;
   for (let t = from; t <= end; t += WK) {
-    const goal = gs.find(g => g.t >= t), prev = [...gs].reverse().find(g => g.t < t);
-    const w = Math.round((goal.t - t) / WK), k = prev ? Math.round((t - prev.t) / WK) : 99;
+    const goal = mains.find(g => g.t >= t) || gs.find(g => g.t >= t);
+    const isA = prioOf(goal) === 'A';
+    const prevA = [...mains].reverse().find(g => g.t < t);
+    const w = Math.round((goal.t - t) / WK), k = prevA ? Math.round((t - prevA.t) / WK) : 99;
+    const minors = gs.filter(g => g.t === t && !(isA && g.id === goal.id));
+    const prevB = gs.find(g => prioOf(g) === 'B' && g.t === t - WK);
+    const nextB = gs.find(g => prioOf(g) === 'B' && g.t === t + WK);
+    const { ab, partial } = absWeek(t);
     const pk = peakRun(goal, st.vol), lp = clamp((+goal.runKm || 0) * 0.9, 12, 32);
     const bpk = goal.rideKm > 0 ? Math.min(goal.rideKm / 22 * 60 * 0.85, 420) : 150;
-    let kind, phase, vol, lg, bm;
-    if (w > 2 && k <= 2) {
+    let kind, phase, vol, lg, bm, note = '', pre = false;
+    if (wasAbs && !ab) { base *= 0.85; long *= 0.85; wasAbs = false; note = 'Reprise progressive après « ' + lastAbs + ' ».'; }
+    if (k <= 2 && (!isA || w > 2)) {
       kind = 'post'; phase = 'Récupération post-course'; if (k === 1) base *= 0.9;
       vol = base * (k === 1 ? 0.35 : 0.6); lg = 0; bm = k === 1 ? 60 : 90; since = 0;
-    } else if (w === 0) {
+    } else if (isA && w === 0) {
       kind = 'race'; phase = 'Semaine de course'; vol = base * 0.2; lg = 0; bm = 0;
-    } else if (w <= 2) {
+    } else if (isA && w <= 2) {
       kind = 'taper'; phase = 'Affûtage'; vol = base * (w === 1 ? 0.6 : 0.8);
       lg = Math.min(long * (w === 1 ? 0.4 : 0.6), 0.5 * vol); bm = bike * (w === 1 ? 0.4 : 0.7);
+    } else if (ab) {
+      kind = 'recup'; phase = 'Voyage · ' + ab.name; vol = base * ab.runPct / 100; lg = Math.min(long * ab.runPct / 100, 0.5 * vol);
+      bm = ab.bike ? bike * 0.8 : 0; since = 0; wasAbs = true; lastAbs = ab.name;
+      note = 'Pendant « ' + ab.name + ' » : course à ' + ab.runPct + ' % de votre volume habituel' + (ab.bike ? '' : ', sans vélo') + '. ' + (ab.note || '');
+    } else if (prevB) {
+      kind = 'post'; phase = 'Récupération après ' + prevB.name; vol = base * 0.6; lg = 0; bm = 90; since = 0;
     } else if (since >= 3) {
       kind = 'recup'; phase = 'Semaine allégée'; vol = base * 0.75; lg = Math.min(long * 0.7, 0.5 * vol); bm = bike * 0.6; since = 0;
     } else {
@@ -337,7 +384,9 @@ function genPlan(from) {
       bike = Math.min(bike + 15, kind === 'base' ? bpk * 0.7 : bpk); bm = bike; since++;
       if (kind === 'spec') sp++;
     }
-    out.push(buildWeek({ t, w, goal, kind, phase, vol, lg, bm, sp: sp - 1 < 0 ? 0 : sp - 1 }));
+    if (nextB && (kind === 'base' || kind === 'spec')) { vol *= 0.85; lg *= 0.8; pre = true; note += ' Allègement avant « ' + nextB.name + ' ».'; }
+    if (partial && !ab) note += ' Voyage « ' + partial.name + ' » sur une partie de la semaine : adaptez les sorties.';
+    out.push(buildWeek({ t, w, goal, kind, phase, vol, lg, bm, sp: Math.max(0, sp - 1), minors, ab, pre, note: note.trim() }));
   }
   return out;
 }
@@ -348,12 +397,50 @@ function makePlan(keepPast) {
   save(KP, plan);
 }
 
+/* ---------- Absences ---------- */
+function absForm(a) {
+  const i = a.id, o = (v, t) => '<option value="' + v + '"' + (+a.runPct === v ? ' selected' : '') + '>' + t + '</option>';
+  return '<label>Nom</label><input id="an_' + i + '" value="' + esc(a.name) + '">' +
+    '<label>Du</label><input id="as_' + i + '" type="date" value="' + esc(a.start) + '">' +
+    '<label>Au (inclus)</label><input id="ae_' + i + '" type="date" value="' + esc(a.end) + '">' +
+    '<label>Course à pied pendant cette période</label><select id="ar_' + i + '">' + o(100, 'Normale (100 %)') + o(75, 'Réduite (75 %)') + o(50, 'Réduite (50 %)') + o(25, 'Très réduite (25 %)') + o(0, 'Aucune') + '</select>' +
+    '<label>Vélo possible</label><select id="ab_' + i + '"><option value="1"' + (a.bike ? ' selected' : '') + '>Oui</option><option value="0"' + (a.bike ? '' : ' selected') + '>Non</option></select>' +
+    '<button class="b" onclick="saveAbs(\'' + i + '\')">Enregistrer et adapter le plan</button>' +
+    (i !== 'new' ? '<button class="b alt" onclick="delAbs(\'' + i + '\')">Supprimer</button>' : '');
+}
+function saveAbs(i) {
+  const a = { id: i === 'new' ? 'a' + Date.now() : i, name: $('#an_' + i).value.trim() || 'Absence', start: $('#as_' + i).value, end: $('#ae_' + i).value,
+    runPct: +$('#ar_' + i).value, bike: $('#ab_' + i).value === '1', confirmed: true };
+  if (!a.start || !a.end || a.end < a.start) return alert('Indiquez des dates valides (début avant fin).');
+  const k = absences.findIndex(x => x.id === a.id); if (k >= 0) absences[k] = a; else absences.push(a);
+  save(KB, absences); makePlan(true); paint();
+}
+function delAbs(i) {
+  if (!confirm('Supprimer cette absence ?')) return;
+  absences = absences.filter(a => a.id !== i); save(KB, absences); makePlan(true); paint();
+}
+function absCard() {
+  return '<div class="card"><h2>Absences et contraintes</h2>' +
+    absences.slice().sort((a, b) => a.start.localeCompare(b.start)).map(a =>
+      '<details style="border-bottom:1px solid var(--line);padding:8px 0"><summary><div class="row" style="border:0;padding:0"><div><b>' + esc(a.name) + '</b><div class="m">' + fmtD(a.start) + ' → ' + fmtD(a.end) +
+      (a.confirmed === false ? ' · <span class="ko">⚠ à ajuster</span>' : '') + '</div></div><div class="r">course ' + a.runPct + ' %<br>' + (a.bike ? 'vélo oui' : 'sans vélo') + '</div></div></summary><div style="margin-top:10px">' + absForm(a) + '</div></details>').join('') +
+    '<details style="padding-top:10px"><summary><b class="ride">+ Ajouter une absence ou contrainte</b></summary><div style="margin-top:10px">' + absForm({ id: 'new', name: '', start: '', end: '', runPct: 50, bike: false }) + '</div></details></div>';
+}
+function migrate() {
+  if (load('bt_mig3', false)) return;
+  goals.forEach(g => { if (!g.prio) g.prio = 'A' });
+  if (!goals.some(g => /korrikei/i.test(g.name))) goals.push({ id: 'g3', name: 'Korrikei (Pays basque)', type: 'trail', date: '2026-11-22', runKm: 22, rideKm: 0, elev: '', prio: 'B', confirmed: true });
+  save(KG, goals); save('bt_mig3', true);
+  if (plan) makePlan(true);
+}
+
 /* ---------- Objectifs ---------- */
 const TYPES = { trail: 'Trail', combo: 'Gravel + trail le même jour', ride: 'Vélo / gravel' };
 function goalForm(g) {
-  const i = g.id, opt = (v, t) => '<option value="' + v + '"' + (g.type === v ? ' selected' : '') + '>' + t + '</option>';
+  const i = g.id, po = (v, t) => '<option value="' + v + '"' + ((g.prio || 'B') === v ? ' selected' : '') + '>' + t + '</option>', opt = (v, t) => '<option value="' + v + '"' + (g.type === v ? ' selected' : '') + '>' + t + '</option>';
   return '<label>Nom</label><input id="gn_' + i + '" value="' + esc(g.name) + '">' +
     '<label>Type</label><select id="gt_' + i + '">' + opt('trail', 'Trail') + opt('combo', TYPES.combo) + opt('ride', TYPES.ride) + '</select>' +
+    '<label>Priorité</label><select id="gp_' + i + '">' + po('A', 'A · objectif principal (affûtage complet)') + po('B', 'B · course importante (petit affûtage)') + po('C', 'C · course d’entraînement (sans affûtage)') + '</select>' +
     '<label>Date</label><input id="gd_' + i + '" type="date" value="' + esc(g.date) + '">' +
     '<label>Distance à pied (km)</label><input id="gr_' + i + '" type="number" inputmode="decimal" value="' + esc(g.runKm) + '">' +
     '<label>Distance à vélo (km)</label><input id="gb_' + i + '" type="number" inputmode="decimal" value="' + esc(g.rideKm) + '">' +
@@ -362,7 +449,7 @@ function goalForm(g) {
     (i !== 'new' ? '<button class="b alt" onclick="delGoal(\'' + i + '\')">Supprimer cet objectif</button>' : '');
 }
 function saveGoal(i) {
-  const g = { id: i === 'new' ? 'g' + Date.now() : i, name: $('#gn_' + i).value.trim() || 'Objectif', type: $('#gt_' + i).value, date: $('#gd_' + i).value,
+  const g = { id: i === 'new' ? 'g' + Date.now() : i, name: $('#gn_' + i).value.trim() || 'Objectif', type: $('#gt_' + i).value, prio: $('#gp_' + i).value, date: $('#gd_' + i).value,
     runKm: +$('#gr_' + i).value || 0, rideKm: +$('#gb_' + i).value || 0, elev: +$('#ge_' + i).value || '', confirmed: true };
   if (!g.date) return alert('Indiquez la date de l’objectif.');
   const k = goals.findIndex(x => x.id === g.id); if (k >= 0) goals[k] = g; else goals.push(g);
@@ -413,7 +500,7 @@ function vHome() {
     const done = runKmWeek(cur), n = weekRuns(cur).length, bd = bikeMinWeek(cur);
     let k = 0;
     h += '<div class="card"><h2>Cette semaine · ' + pill(w.kind, w.phase) + '</h2>' +
-      '<div>Course : <b>' + done.toFixed(0) + '</b> / ' + w.vol + ' km</div><div class="bar"><div style="width:' + Math.min(100, done / Math.max(1, w.vol) * 100) + '%"></div></div>' +
+      (w.note ? '<div class="m" style="margin-bottom:8px">' + esc(w.note) + '</div>' : '') + '<div>Course : <b>' + done.toFixed(0) + '</b> / ' + w.vol + ' km</div><div class="bar"><div style="width:' + Math.min(100, done / Math.max(1, w.vol) * 100) + '%"></div></div>' +
       w.runs.map(r => sessRow(r, !r.race && k++ < n)).join('') + bikeRow(w, bd) + '</div>';
   } else h += '<div class="card"><div class="m">Pas de séance prévue cette semaine.</div></div>';
   const nx = plan.weeks.filter(x => x.t > cur).slice(0, 3);
@@ -428,7 +515,7 @@ function planChart() {
     const x = i * bw + 2, hp = w.vol / max * (H - 22);
     s += '<rect x="' + x + '" y="' + (H - hp) + '" width="' + (bw - 4) + '" height="' + hp + '" rx="2" fill="var(--k-' + w.kind + ')" opacity=".85"/>';
     if (w.t <= cur) { const a = runKmWeek(w.t); if (a > 0) { const ha = a / max * (H - 22); s += '<rect x="' + (x + 3) + '" y="' + (H - ha) + '" width="' + (bw - 10) + '" height="' + ha + '" fill="#fff" opacity=".9"/>' } }
-    if (w.runs.some(r => r.race)) s += '<text x="' + (x + 7) + '" y="12" font-size="13" text-anchor="middle">🏁</text>';
+    const rc = w.runs.find(r => r.race); if (rc) s += '<text x="' + (x + 7) + '" y="12" font-size="13" text-anchor="middle">' + (rc.prio === 'A' ? '🏁' : '🔸') + '</text>';
     if (new Date(w.t).getUTCDate() <= 7) s += '<text x="' + x + '" y="' + (H + 13) + '" font-size="10" fill="var(--mut)">' + new Date(w.t).toLocaleDateString('fr-FR', { month: 'short', timeZone: 'UTC' }) + '</text>';
   });
   return '<div class="scroll" id="psc"><svg width="' + (W.length * bw + 4) + '" height="' + (H + 18) + '">' + s + '</svg></div>' +
@@ -439,9 +526,10 @@ function vPlan() {
   let h = '<div class="card"><h2>Mes objectifs</h2>' +
     goals.slice().sort((a, b) => (a.date || '').localeCompare(b.date || '')).map(g => {
       const d = g.date ? Math.ceil((gT(g) - Date.now()) / DAY) : null;
-      return '<details style="border-bottom:1px solid var(--line);padding:8px 0"><summary><div class="row" style="border:0;padding:0"><div><b>' + esc(g.name) + '</b><div class="m">' + (g.date ? fmtD(g.date) : 'date manquante') + (g.confirmed === false ? ' · <span class="ko">⚠ date à confirmer</span>' : '') + '</div></div><div class="r">' + (d !== null ? (d >= 0 ? 'J-' + d : 'passé') : '') + '</div></div></summary><div style="margin-top:10px">' + goalForm(g) + '</div></details>';
+      return '<details style="border-bottom:1px solid var(--line);padding:8px 0"><summary><div class="row" style="border:0;padding:0"><div><b>' + esc(g.name) + '</b><div class="m">' + ({ A: 'Principal', B: 'Importante', C: 'Entraînement' }[g.prio || 'A']) + ' · ' + (g.date ? fmtD(g.date) : 'date manquante') + (g.confirmed === false ? ' · <span class="ko">⚠ date à confirmer</span>' : '') + '</div></div><div class="r">' + (d !== null ? (d >= 0 ? 'J-' + d : 'passé') : '') + '</div></div></summary><div style="margin-top:10px">' + goalForm(g) + '</div></details>';
     }).join('') +
     '<details style="padding-top:10px"><summary><b class="ride">+ Ajouter un objectif</b></summary><div style="margin-top:10px">' + goalForm({ id: 'new', name: '', type: 'trail', date: '', runKm: '', rideKm: '', elev: '' }) + '</div></details></div>';
+  h += absCard();
   if (!plan || !plan.weeks.length) return h + '<div class="card"><button class="b" onclick="makePlan(true);paint()">Générer mon plan</button></div>';
   h += '<div class="card"><h2>Volume de course par semaine (km)</h2>' + planChart() + '</div>';
   h += '<button class="b" onclick="makePlan(true);paint()">Adapter le plan à ma forme et à mes objectifs</button>';
@@ -449,6 +537,8 @@ function vPlan() {
     '<li>Départ : votre volume des 4 dernières semaines et votre plus longue sortie des 3 derniers mois.</li>' +
     '<li>Progression d’environ 8 % par semaine, avec une semaine allégée (−25 %) toutes les 4 semaines.</li>' +
     '<li>Phases : base, spécifique (à partir de 10 semaines de l’objectif), affûtage sur 2 semaines, semaine de course, puis récupération.</li>' +
+    '<li>Priorités : A = objectif principal (affûtage complet), B = course importante (allègement la semaine d’avant, une semaine de récupération après), C = course d’entraînement (elle remplace la sortie longue, sans affûtage).</li>' +
+    '<li>Absences : le volume de course est réduit selon le pourcentage choisi, puis la reprise est progressive (environ 85 % du niveau d’avant).</li>' +
     '<li>3 sorties à pied par semaine : une séance de qualité, un footing, une sortie longue (au plus la moitié du volume).</li>' +
     '<li>Le vélotaf compte comme base d’endurance et n’est pas planifié. Les sorties vélo (hors trajet, au moins 1h15 et non marquées « trajet » dans Strava) sont proposées en option, à placer selon la météo.</li>' +
     '<li>Pour le gravel + trail : la sortie vélo longue monte progressivement jusqu’à environ 85 % de la distance visée, avec des enchaînements vélo-course dans les dernières semaines.</li>' +
@@ -458,7 +548,7 @@ function vPlan() {
   h += list.map(w => {
     const past = w.t < cur, isCur = w.t === cur, done = runKmWeek(w.t);
     return '<details class="card"' + (isCur ? ' open' : '') + (past ? ' style="opacity:.7"' : '') + '><summary><div class="row" style="border:0;padding:0"><div><b>Sem. du ' + fmtS(w.t) + '</b><div class="m">' + pill(w.kind, w.phase) + ' · ' + esc(w.gname) + '</div></div>' +
-      '<div class="r"><b>' + w.vol + ' km</b>' + (past || isCur ? '<br>fait : ' + done.toFixed(0) + ' km' : '') + '</div></div></summary><div style="margin-top:8px">' +
+      '<div class="r"><b>' + w.vol + ' km</b>' + (past || isCur ? '<br>fait : ' + done.toFixed(0) + ' km' : '') + '</div></div></summary><div style="margin-top:8px">' + (w.note ? '<div class="m" style="margin-bottom:6px">' + esc(w.note) + '</div>' : '') +
       w.runs.map(r => sessRow(r)).join('') + bikeRow(w, past || isCur ? bikeMinWeek(w.t) : undefined) + '</div></details>';
   }).join('');
   return h;
@@ -521,6 +611,7 @@ function paint() {
   if (tab === 'plan' && plan) { const sc = $('#psc'); if (sc) { const i = plan.weeks.findIndex(w => w.t >= curWeek()); sc.scrollLeft = Math.max(0, i * 18 - 80) } }
 }
 document.querySelectorAll('nav button').forEach(b => b.onclick = () => { tab = b.dataset.t; paint(); window.scrollTo && window.scrollTo(0, 0) });
+migrate();
 paint();
 if (cfg.refresh && cfg.id && cfg.secret && (!cfg.last || Date.now() - cfg.last > 6 * 36e5)) sync();
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
