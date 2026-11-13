@@ -168,11 +168,11 @@ nav button.on .nav-icon{background:linear-gradient(145deg,rgba(255,113,56,.19),r
 
 <script>
 const $ = s => document.querySelector(s);
-const KC = 'bt_cfg', KA = 'bt_acts', KG = 'bt_goals', KP = 'bt_plan', KF = 'bt_prof', KB = 'bt_abs', KO = 'bt_off', KR = 'bt_feel', KM = 'bt_maint', KS = 'bt_gear', KH = 'bt_chat', KJ = 'bt_adj';
+const KC = 'bt_cfg', KA = 'bt_acts', KG = 'bt_goals', KP = 'bt_plan', KF = 'bt_prof', KB = 'bt_abs', KO = 'bt_off', KR = 'bt_feel', KM = 'bt_maint', KS = 'bt_gear', KH = 'bt_chat', KJ = 'bt_adj', KX = 'bt_session_edits';
 const load = (k, d) => { try { const v = JSON.parse(localStorage.getItem(k)); return v === null || v === undefined ? d : v } catch (e) { return d } };
 const save = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)) } catch (e) { log('Stockage local plein ou indisponible.') } };
 let cfg = load(KC, {}), acts = load(KA, []), goals = load(KG, null), plan = load(KP, null), prof = load(KF, {}), absences = load(KB, null),
-  offs = load(KO, []), feels = load(KR, []), maint = load(KM, []), gears = load(KS, []), chat = load(KH, []), adj = load(KJ, {});
+  offs = load(KO, []), feels = load(KR, []), maint = load(KM, []), gears = load(KS, []), chat = load(KH, []), adj = load(KJ, {}), sessEdits = load(KX, {});
 let tab = 'home', filt = 'all', chatBusy = false; const openK = {}, imgSel = {}, imgTmp = {};
 // Migration sécurisée : supprime une éventuelle ancienne clé Anthropic stockée localement.
 if (cfg.ai) { delete cfg.ai; delete cfg.model; save(KC, cfg); }
@@ -556,10 +556,23 @@ function genPlan(from) {
   }
   return out;
 }
+function applySessionEdits(weeks) {
+  Object.entries(sessEdits || {}).forEach(([sourceDate, edit]) => {
+    const w = weeks.find(x => x.t === weekStart(sourceDate + 'T00:00:00Z'));
+    if (!w || !edit) return;
+    const i = w.runs.findIndex(r => r.t === edit.sessionTitle && !r.race);
+    if (i < 0) return;
+    w.runs[i] = { ...w.runs[i], iso: edit.date, t: edit.newTitle || w.runs[i].t,
+      km: edit.newKm == null ? w.runs[i].km : edit.newKm,
+      x: edit.details || w.runs[i].x };
+  });
+  return weeks;
+}
 function makePlan(keepPast) {
   const cur = curWeek();
   const old = (keepPast && plan) ? plan.weeks.filter(w => w.t < cur) : [];
-  plan = { gen: Date.now(), weeks: old.concat(genPlan(cur)) };
+  const fresh = applySessionEdits(genPlan(cur));
+  plan = { gen: Date.now(), weeks: old.concat(fresh) };
   save(KP, plan);
 }
 
@@ -717,15 +730,16 @@ function lighten(f) {
   if (feels[0]) { feels[0].f = null; save(KR, feels) }
   makePlan(true); paint();
 }
-const COACH_SYS = `Tu es le coach de course à pied (trail) et de vélo de l'application MENDI Training. Tu réponds en français, avec le vouvoiement, de façon concrète et brève (8 phrases maximum). Tu n'es pas médecin : en cas de douleur qui persiste ou inhabituelle, tu conseilles de consulter. Tu t'appuies uniquement sur le contexte fourni et tu n'inventes aucune donnée.
-Si la demande de l'utilisateur implique de modifier son programme, tu proposes les modifications dans un bloc final au format exact :
-\`\`\`actions
-[ {"do":"add_absence","name":"…","start":"AAAA-MM-JJ","end":"AAAA-MM-JJ","runPct":50,"bike":false},
-  {"do":"add_goal","name":"…","date":"AAAA-MM-JJ","runKm":22,"rideKm":0,"gtype":"trail","prio":"B"},
-  {"do":"days_off","dates":["AAAA-MM-JJ"]},
-  {"do":"scale_week","week":"AAAA-MM-JJ","factor":0.7} ]
-\`\`\`
-Règles : gtype vaut trail, combo ou ride ; prio vaut A, B ou C ; factor est compris entre 0,3 et 1,2 et s'applique au volume de course de la semaine contenant la date « week » ; runPct est le pourcentage de course à pied conservé pendant une absence (0 à 100). N'inclus le bloc que si une modification est utile, avec uniquement les actions nécessaires. Les modifications ne s'appliquent que si l'utilisateur les valide.`;
+const COACH_SYS = `Tu es le coach de course à pied (trail), de vélo et de renforcement de MENDI Training. Tu réponds en français, avec le vouvoiement, concrètement et brièvement (8 phrases maximum). Tu n'es pas médecin : en cas de douleur importante, inhabituelle, qui s'aggrave ou persiste, conseille de suspendre la séance concernée et de consulter un professionnel de santé. N'invente aucune donnée.
+Tu dois toujours répondre sous forme d'un objet JSON avec exactement deux propriétés : reply (texte destiné à l'athlète) et actions (tableau d'actions structurées). Ne mets jamais de Markdown ni de bloc de code autour du JSON.
+Si l'utilisateur signale des courbatures, une fatigue ou une douleur qui rend la séance prévue inadaptée, propose spontanément une adaptation prudente du programme, même s'il ne dit pas littéralement « modifie mon plan ». Pour une simple question sans conséquence sur l'entraînement, ne déclenche pas d'action. Ne prétends jamais qu'une modification est déjà appliquée : toutes les actions attendent le clic de validation de l'utilisateur.
+Actions possibles :
+- scale_week : réduire ou augmenter le volume d'une semaine précise. Renseigne week avec le lundi de la semaine (AAAA-MM-JJ) et factor entre 0.3 et 1.2. Par exemple 0.7 signifie -30 %.
+- days_off : réserver un ou plusieurs jours de repos futurs, dates au format AAAA-MM-JJ.
+- add_absence : enregistrer une absence réelle avec name, start, end, runPct (0 à 100) et bike (booléen).
+- add_goal : ajouter une course réellement mentionnée par l'utilisateur, avec name, date, runKm, rideKm, gtype (trail/combo/ride) et prio (A/B/C).
+- edit_session : modifier ou déplacer une séance de course à pied future visible dans le planning fourni. sessionDate doit être sa date actuelle exacte, sessionTitle son titre exact dans le planning, date la nouvelle date (dans la même semaine), newTitle le nouveau titre ou null, newKm la nouvelle distance en km ou null, details la nouvelle consigne ou null. N'invente pas de séance qui n'existe pas dans le planning. Ne modifie jamais une séance déjà réalisée.
+Si les informations indispensables manquent (date, séance cible, distance ou durée selon le cas), pose une question au lieu d'émettre une action. Pour une fatigue ou des courbatures, privilégie une baisse de charge et/ou du repos ; n'ajoute pas d'intensité. Les modifications sont toujours proposées, jamais appliquées automatiquement.`;
 function coachContext() {
   const cur = curWeek(), L = [];
   L.push('Aujourd’hui : ' + todayIso() + ' (' + DN[dow(todayIso())] + ').');
@@ -737,37 +751,55 @@ function coachContext() {
   if (plan) plan.weeks.filter(w => w.t >= cur).slice(0, 4).forEach(w => L.push('Semaine du ' + isoOf(w.t) + ' : ' + w.phase + ', ' + w.vol + ' km. Séances : ' + assignDays(w).map(r => (r.iso || 'non placée') + ' ' + r.t + ' ' + (r.race ? r.txt : r.km + ' km') + (r.done ? ' (fait)' : '')).join(' | ')));
   const fo = offs.filter(d => d >= todayIso()); if (fo.length) L.push('Jours off déjà posés : ' + fo.join(', ') + '.');
   if (feels.length) L.push('Derniers ressentis : ' + feels.slice(0, 5).map(e => e.date + ' forme ' + e.energy + '/5, douleur ' + e.pain + (e.note ? ' (' + e.note + ')' : '')).join(' ; '));
+  const pending = [];
+  chat.forEach(m => (m.actions || []).forEach((a, i) => { if (!(m.applied || [])[i]) pending.push(actLabel(a)); }));
+  if (pending.length) L.push('Propositions de programme encore en attente de validation : ' + pending.join(' ; '));
   return L.join('\n');
 }
 function validAct(a) {
   if (!a || typeof a !== 'object') return false;
-  const d = x => typeof x === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(x);
-  if (a.do === 'add_absence') return d(a.start) && d(a.end) && a.end >= a.start;
-  if (a.do === 'add_goal') return d(a.date) && !!a.name;
-  if (a.do === 'days_off') return Array.isArray(a.dates) && a.dates.length > 0 && a.dates.every(d);
-  if (a.do === 'scale_week') return d(a.week) && +a.factor > 0;
+  const d = x => typeof x === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(x) && !Number.isNaN(Date.parse(x + 'T00:00:00Z'));
+  if (a.do === 'add_absence') return d(a.start) && d(a.end) && a.end >= a.start && typeof a.name === 'string' && a.name.trim() && Number.isFinite(+a.runPct) && +a.runPct >= 0 && +a.runPct <= 100 && typeof a.bike === 'boolean';
+  if (a.do === 'add_goal') return d(a.date) && typeof a.name === 'string' && a.name.trim() && Number.isFinite(+a.runKm) && +a.runKm >= 0 && Number.isFinite(+a.rideKm) && +a.rideKm >= 0 && ['trail', 'combo', 'ride'].includes(a.gtype) && ['A', 'B', 'C'].includes(a.prio);
+  if (a.do === 'days_off') return Array.isArray(a.dates) && a.dates.length > 0 && a.dates.every(x => d(x) && x >= todayIso());
+  if (a.do === 'scale_week') return d(a.week) && Number.isFinite(+a.factor) && +a.factor >= 0.3 && +a.factor <= 1.2 && weekStart(a.week + 'T00:00:00Z') >= curWeek();
+  if (a.do === 'edit_session') return d(a.sessionDate) && d(a.date) && a.sessionDate >= todayIso() && a.date >= todayIso() && !offs.includes(a.date) && weekStart(a.sessionDate + 'T00:00:00Z') === weekStart(a.date + 'T00:00:00Z') && typeof a.sessionTitle === 'string' && a.sessionTitle.trim() && (a.newTitle === null || typeof a.newTitle === 'string') && (a.newKm === null || (Number.isFinite(+a.newKm) && +a.newKm >= 0 && +a.newKm <= 100)) && (a.details === null || typeof a.details === 'string');
   return false;
 }
-const actLabel = a => a.do === 'add_absence' ? 'Ajouter l’absence « ' + a.name + ' » (' + fmtD(a.start) + ' → ' + fmtD(a.end) + ', course ' + clamp(+a.runPct || 0, 0, 100) + ' %)'
+const actLabel = a => a.do === 'add_absence' ? 'Ajouter l’absence « ' + a.name + ' » (' + fmtD(a.start) + ' → ' + fmtD(a.end) + ', course ' + clamp(+a.runPct || 0, 0, 100) + ' %)' 
   : a.do === 'add_goal' ? 'Ajouter la course « ' + a.name + ' » (' + fmtD(a.date) + ')'
   : a.do === 'days_off' ? 'Marquer OFF : ' + a.dates.map(x => dayLabel(x)).join(', ')
+  : a.do === 'edit_session' ? 'Modifier « ' + a.sessionTitle + ' » le ' + fmtD(a.sessionDate) + ' → ' + (a.newTitle || a.sessionTitle) + ' le ' + fmtD(a.date) + (a.newKm !== null ? ' · ' + a.newKm + ' km' : '')
   : 'Semaine du ' + fmtS(weekStart(a.week)) + ' : volume × ' + clamp(+a.factor, 0.3, 1.2);
-function parseCoach(txt) {
-  const m = txt.match(/```actions\s*([\s\S]*?)```/); let list = [];
-  if (m) { try { list = JSON.parse(m[1]) } catch (e) { } txt = txt.replace(m[0], '').trim() }
-  return { text: txt, actions: (Array.isArray(list) ? list : []).filter(validAct) };
+function parseCoach(payload) {
+  if (payload && typeof payload === 'object') {
+    return { text: String(payload.reply || ''), actions: (Array.isArray(payload.actions) ? payload.actions : []).filter(validAct) };
+  }
+  const raw = String(payload || '');
+  try {
+    const j = JSON.parse(raw);
+    if (j && typeof j === 'object') return { text: String(j.reply || j.text || ''), actions: (Array.isArray(j.actions) ? j.actions : []).filter(validAct) };
+  } catch (_) {}
+  const m = raw.match(/```actions\s*([\s\S]*?)```/); let list = [];
+  if (m) { try { list = JSON.parse(m[1]) } catch (_) {} }
+  return { text: m ? raw.replace(m[0], '').trim() : raw, actions: (Array.isArray(list) ? list : []).filter(validAct) };
 }
 function applyAct(mi, ai) {
   const m = chat[mi]; if (!m || !m.actions) return;
   if (!Array.isArray(m.applied)) m.applied = [];
   if (m.applied[ai]) return;
   const a = m.actions[ai];
-  // Le clic est une validation explicite ; une confirmation supplémentaire évite les applications accidentelles.
+  if (a.do === 'edit_session') {
+    const w = plan && plan.weeks.find(x => x.t === weekStart(a.sessionDate + 'T00:00:00Z'));
+    const found = w && assignDays(w).some(r => r.iso === a.sessionDate && r.t === a.sessionTitle && !r.race);
+    if (!found) return alert('Je ne retrouve plus cette séance dans le planning actuel. Demandez au coach une nouvelle proposition à partir du programme affiché.');
+  }
   if (!confirm('Confirmer cette modification du programme ?\n\n' + actLabel(a) + '\n\nAucune modification ne sera faite si vous annulez.')) return;
   if (a.do === 'add_absence') absences.push({ id: 'a' + Date.now() + ai, name: a.name || 'Absence', start: a.start, end: a.end, runPct: clamp(+a.runPct || 0, 0, 100), bike: !!a.bike, confirmed: true }), save(KB, absences);
-  else if (a.do === 'add_goal') goals.push({ id: 'g' + Date.now() + ai, name: a.name, type: ['trail', 'combo', 'ride'].includes(a.gtype) ? a.gtype : 'trail', date: a.date, runKm: +a.runKm || 0, rideKm: +a.rideKm || 0, elev: '', prio: ['A', 'B', 'C'].includes(a.prio) ? a.prio : 'B', img: IMGS[goals.length % 3], confirmed: true }), save(KG, goals);
+  else if (a.do === 'add_goal') goals.push({ id: 'g' + Date.now() + ai, name: a.name, type: a.gtype, date: a.date, runKm: +a.runKm || 0, rideKm: +a.rideKm || 0, elev: '', prio: a.prio, img: IMGS[goals.length % 3], confirmed: true }), save(KG, goals);
   else if (a.do === 'days_off') { a.dates.forEach(d => { if (d >= todayIso() && !offs.includes(d)) offs.push(d) }); save(KO, offs) }
   else if (a.do === 'scale_week') { adj[isoOf(weekStart(a.week))] = clamp(+a.factor, 0.3, 1.2); save(KJ, adj) }
+  else if (a.do === 'edit_session') { sessEdits[a.sessionDate] = { sessionDate: a.sessionDate, date: a.date, sessionTitle: a.sessionTitle, newTitle: a.newTitle, newKm: a.newKm, details: a.details }; save(KX, sessEdits) }
   m.applied[ai] = true; save(KH, chat.slice(-30)); makePlan(true); paint();
 }
 async function sendCoach(text) {
@@ -785,9 +817,10 @@ async function sendCoach(text) {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ system: COACH_SYS, context: coachContext(), messages: msgs }) });
     if (!r.ok) { const detail = (await r.text()).slice(0, 240); throw new Error('Relais OpenAI : HTTP ' + r.status + (detail ? ' · ' + detail : '')); }
-    const j = await r.json(); const txt = j.text || '';
-    if (!txt) throw new Error('Le relais OpenAI a renvoyé une réponse vide.');
-    const p = parseCoach(txt); chat.push({ r: 'a', t: p.text || '(réponse vide)', actions: p.actions, applied: [] });
+    const j = await r.json();
+    const p = parseCoach(j && (j.reply !== undefined || j.actions !== undefined) ? j : (j.text || ''));
+    if (!p.text) throw new Error('Le relais OpenAI a renvoyé une réponse vide.');
+    chat.push({ r: 'a', t: p.text, actions: p.actions, applied: [] });
   } catch (e) { chat.push({ r: 'a', t: 'Erreur : ' + netHint(e), actions: [], applied: [], err: true }) }
   chatBusy = false; save(KH, chat.slice(-30)); paint();
 }
@@ -971,7 +1004,7 @@ function absCard() {
 }
 function vPlan() {
   const cur = curWeek();
-  let h = coachCard();
+  let h = '';
   h += '<div class="card"><h2>Mes objectifs</h2>' +
     goals.slice().sort((a, b) => (a.date || '').localeCompare(b.date || '')).map(g => {
       const d = g.date ? Math.ceil((gT(g) - Date.now()) / DAY) : null;
@@ -979,7 +1012,7 @@ function vPlan() {
     }).join('') +
     det('go_new', '<div style="padding-top:10px"><b class="ride">+ Ajouter une course ou un objectif</b></div>', '<div style="margin-top:10px">' + goalForm({ id: 'new', name: '', type: 'trail', date: '', runKm: '', rideKm: '', elev: '', prio: 'B', img: IMGS[goals.length % 3] }) + '</div>', false) + '</div>';
   h += absCard();
-  if (!plan || !plan.weeks.length) return h + '<div class="card"><button class="b" onclick="makePlan(true);paint()">Générer mon plan</button></div>';
+  if (!plan || !plan.weeks.length) return h + '<div class="card"><button class="b" onclick="makePlan(true);paint()">Générer mon plan</button></div>' + coachCard();
   h += '<div class="card"><h2>Volume de course par semaine (km)</h2>' + planChart() + '</div>';
   h += '<button class="b" onclick="makePlan(true);paint()">Adapter le plan à ma forme et à mes objectifs</button>';
   h += det('how', '<h2 style="margin:0">Comment le plan est calculé</h2>', '<ul class="m">' +
@@ -1003,7 +1036,7 @@ function vPlan() {
       asg.map(r => sessRow(r, r.done, w.t >= cur ? (r.iso ? (r.done ? 'Fait · ' : '') + dayLabel(r.iso) : 'À replacer (aucun jour disponible)') : r.d)).join('') + bikeRow(w, past || isCur ? bikeMinWeek(w.t) : undefined) + (past ? '' : strengthBlock(w)) + '</div>';
     return det('w' + w.t, sum, body, isCur, 'card');
   }).join('');
-  return h;
+  return h + coachCard();
 }
 function agg(list, g) {
   const l = list.filter(a => grp(a.type) === g);
