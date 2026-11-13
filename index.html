@@ -600,7 +600,7 @@ function applySessionEdits(weeks) {
     if (i < 0) return;
     w.runs[i] = { ...w.runs[i], iso: edit.date, t: edit.newTitle || w.runs[i].t,
       km: edit.newKm == null ? w.runs[i].km : edit.newKm,
-      x: edit.details || w.runs[i].x };
+      x: edit.details || w.runs[i].x, workout: edit.workout || w.runs[i].workout };
   });
   return weeks;
 }
@@ -780,8 +780,9 @@ Actions possibles :
 - days_off : réserver un ou plusieurs jours de repos futurs, dates au format AAAA-MM-JJ.
 - add_absence : enregistrer une absence réelle avec name, start, end, runPct (0 à 100) et bike (booléen).
 - add_goal : ajouter une course réellement mentionnée par l'utilisateur, avec name, date, runKm, rideKm, gtype (trail/combo/ride) et prio (A/B/C).
-- edit_session : modifier une séance future de course, vélo ou renforcement visible dans le planning. Renseigne sport (run|bike|strength), sessionDate, sessionTitle exacts, date (dans la même semaine), newTitle, newKm (course/vélo) ou newDurationMin (vélo/renforcement), details. Mets null pour les champs non modifiés. Ne crée pas de séance et ne modifie jamais une séance réalisée.
-- replace_week : remplacer uniquement le contenu d'une semaine future précise, sans modifier les autres semaines ni les objectifs. Format : weekStart (lundi AAAA-MM-JJ), kind (base|spec|recup|taper|race|post), phase, targetRunKm, note, sessions (tableau de séances run|bike|strength avec date, sport, type, title, distanceKm et/ou durationMin, details). Respecte les jours OFF, la récupération et les contraintes. Cette action doit être proposée puis validée.
+- edit_session : modifier une séance future de course, vélo ou renforcement visible dans le planning. Renseigne sport (run|bike|strength), sessionDate, sessionTitle exacts, date (dans la même semaine), newTitle, newKm (course/vélo) ou newDurationMin (vélo/renforcement), details et workout (structure complète ou null). Mets null pour les champs non modifiés. Ne crée pas de séance et ne modifie jamais une séance réalisée.
+Pour toute séance de course ou vélo de fractionné, fournis workout avec des étapes structurées. Pour le renforcement, fournis workout.exercises avec les exercices, séries, répétitions, repos et tempo.
+- replace_week : remplacer uniquement le contenu d'une semaine future précise, sans modifier les autres semaines ni les objectifs. Format : weekStart (lundi AAAA-MM-JJ), kind (base|spec|recup|taper|race|post), phase, targetRunKm, note, sessions (tableau de séances run|bike|strength avec date, sport, type, title, distanceKm et/ou durationMin, details et workout facultatif). Respecte les jours OFF, la récupération et les contraintes. Cette action doit être proposée puis validée.
 Si les informations indispensables manquent (date, séance cible, distance ou durée selon le cas), pose une question au lieu d'émettre une action. Pour une fatigue ou des courbatures, privilégie une baisse de charge et/ou du repos ; n'ajoute pas d'intensité. Les modifications sont toujours proposées, jamais appliquées automatiquement. Si l'utilisateur demande une refonte, une construction ou une adaptation globale/multi-semaines du programme, produis programProposal complet et laisse actions vide pour les changements couverts par ce programme. Pour une discussion ou un conseil sans demande de modification du plan, programProposal doit être null.`;
 function coachContext() {
   const cur = curWeek(), L = [];
@@ -804,7 +805,7 @@ function coachProgramData() {
   const weeks = (plan && plan.weeks ? plan.weeks : []).filter(w => w.t >= cur).map(w => {
     const runs = assignDays(w).filter(r => r.iso && r.iso >= todayIso()).map(r => ({
       date: r.iso, sport: 'run', type: r.k === 'q' ? 'quality' : r.k === 'l' ? 'long' : r.race ? 'race' : 'easy',
-      title: r.t, distanceKm: +r.km || 0, details: r.x || '', race: !!r.race
+      title: r.t, distanceKm: +r.km || 0, details: r.x || '', workout: r.workout || null, race: !!r.race
     }));
     // Après validation d'un programme IA, les séances vélo et renforcement
     // sont stockées dans coachSessions : elles doivent rester dans le contexte
@@ -814,7 +815,7 @@ function coachProgramData() {
       .map(x => ({ date: x.date, sport: x.sport, type: x.type || 'easy', title: x.title,
         distanceKm: Number.isFinite(+x.distanceKm) ? +x.distanceKm : undefined,
         durationMin: Number.isFinite(+x.durationMin) ? +x.durationMin : undefined,
-        details: x.details || '' })) : [];
+        details: x.details || '', workout: x.workout || null })) : [];
     return { weekStart: isoOf(w.t), phase: w.phase, kind: w.kind, targetRunKm: w.vol,
       sessions: runs.concat(other), bikeMin: +w.bikeMin || 0, note: w.note || '' };
   });
@@ -838,6 +839,46 @@ function coachProgramData() {
     pendingProposal: pending ? pending.programProposal : null
   };
 }
+function validWorkout(w, depth = 0) {
+  if (w == null) return true;
+  if (!w || typeof w !== 'object' || Array.isArray(w) || w.version !== 1 || depth > 2) return false;
+  const kinds = ['warmup','steady','work','recovery','cooldown','repeat'];
+  const units = ['sec','min','m','km'];
+  const targetTypes = ['pace','hr','power','rpe','zone','open'];
+  const checkSteps = (steps, level) => Array.isArray(steps) && steps.length <= 40 && steps.every(st => {
+    if (!st || !kinds.includes(st.kind)) return false;
+    if (st.kind === 'repeat') return Number.isInteger(+st.repeatCount) && +st.repeatCount >= 2 && +st.repeatCount <= 30 && level < 2 && checkSteps(st.steps, level + 1);
+    if (!st.duration || !units.includes(st.duration.unit) || !Number.isFinite(+st.duration.value) || +st.duration.value <= 0 || +st.duration.value > 100000) return false;
+    if (st.target != null && (!targetTypes.includes(st.target.type) || (st.target.label != null && typeof st.target.label !== 'string') || (st.target.min != null && !Number.isFinite(+st.target.min)) || (st.target.max != null && !Number.isFinite(+st.target.max)))) return false;
+    return true;
+  });
+  if (w.steps != null && !checkSteps(w.steps, depth)) return false;
+  if (w.exercises != null && (!Array.isArray(w.exercises) || w.exercises.length > 30 || !w.exercises.every(e => e && typeof e.name === 'string' && e.name.trim() && Number.isInteger(+e.sets) && +e.sets >= 1 && +e.sets <= 20 && (typeof e.reps === 'string' || Number.isFinite(+e.reps)) && String(e.reps).length <= 40 && (e.restSec == null || (Number.isFinite(+e.restSec) && +e.restSec >= 0 && +e.restSec <= 1800)) && ['tempo','load','side','notes'].every(k => e[k] == null || typeof e[k] === 'string')))) return false;
+  return (w.steps == null || Array.isArray(w.steps)) && (w.exercises == null || Array.isArray(w.exercises)) && (w.steps || w.exercises);
+}
+function workoutMarkup(workout) {
+  if (!validWorkout(workout)) return '';
+  const targetText = t => {
+    if (!t) return '';
+    if (t.label) return esc(t.label);
+    if (t.type === 'pace' && t.min != null && t.max != null) return 'Allure ' + esc(formatPace(t.min)) + '–' + esc(formatPace(t.max)) + '/km';
+    if (t.type === 'hr') return 'FC ' + (t.min != null ? t.min : '') + (t.max != null ? '–' + t.max : '') + ' bpm';
+    if (t.type === 'power') return 'Puissance ' + (t.min != null ? t.min : '') + (t.max != null ? '–' + t.max : '') + ' W';
+    if (t.type === 'rpe') return 'RPE ' + (t.min != null ? t.min : '') + (t.max != null ? '–' + t.max : '') + '/10';
+    return t.type === 'open' ? 'Libre' : '';
+  };
+  const dur = d => d ? d.value + ' ' + ({sec:'s',min:'min',m:'m',km:'km'}[d.unit] || d.unit) : '';
+  const names = {warmup:'Échauffement',steady:'Continu',work:'Effort',recovery:'Récupération',cooldown:'Retour au calme'};
+  const steps = (arr, level=0) => (arr || []).map(st => st.kind === 'repeat'
+    ? '<div class="m" style="margin-top:5px;padding-left:'+(level*10)+'px"><b>Répéter '+st.repeatCount+' fois</b>'+steps(st.steps,level+1)+'</div>'
+    : '<div class="m" style="padding-left:'+(level*10)+'px">• <b>'+names[st.kind]+'</b> · '+dur(st.duration)+(targetText(st.target) ? ' · '+targetText(st.target) : '')+'</div>').join('');
+  let html = '';
+  if (workout.steps && workout.steps.length) html += '<div class="adv" style="margin-top:6px"><b>Déroulé de la séance</b>'+steps(workout.steps)+'</div>';
+  if (workout.exercises && workout.exercises.length) html += '<div class="adv" style="margin-top:6px"><b>Exercices</b>'+workout.exercises.map(e => '<div class="m">• <b>'+esc(e.name)+'</b> · '+e.sets+' × '+esc(e.reps)+(e.side ? ' · '+esc(e.side) : '')+(e.restSec != null ? ' · repos '+e.restSec+' s' : '')+(e.tempo ? ' · tempo '+esc(e.tempo) : '')+(e.load ? ' · '+esc(e.load) : '')+(e.notes ? ' · '+esc(e.notes) : '')+'</div>').join('')+'</div>';
+  return html;
+}
+function formatPace(sec) { const n=Math.round(+sec); return Math.floor(n/60)+':'+String(n%60).padStart(2,'0'); }
+
 function validProgramProposal(p) {
   if (!p || typeof p !== 'object' || !Array.isArray(p.weeks) || !p.weeks.length || p.weeks.length > 80) return false;
   const dateOK = d => typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d) && !Number.isNaN(Date.parse(d + 'T00:00:00Z'));
@@ -851,6 +892,7 @@ function validProgramProposal(p) {
     for (const x of w.sessions) {
       if (!x || !dateOK(x.date) || Date.parse(x.date + 'T00:00:00Z') < start || Date.parse(x.date + 'T00:00:00Z') >= end || !['run', 'bike', 'strength'].includes(x.sport) || typeof x.title !== 'string' || !x.title.trim() || x.title.length > 140 || typeof (x.details || '') !== 'string' || (x.details || '').length > 1200) return false;
       if (x.sport === 'run' && (!Number.isFinite(+x.distanceKm) || +x.distanceKm < 0 || +x.distanceKm > 100)) return false;
+      if (x.workout != null && !validWorkout(x.workout)) return false;
       if (x.sport === 'bike' && ((!Number.isFinite(+x.durationMin) || +x.durationMin < 0 || +x.durationMin > 1200) && (!Number.isFinite(+x.distanceKm) || +x.distanceKm < 0 || +x.distanceKm > 400))) return false;
     }
     const runTotal = w.sessions.filter(x => x.sport === 'run').reduce((n, x) => n + (+x.distanceKm || 0), 0);
@@ -870,7 +912,7 @@ function proposalToPlan(p) {
   const fresh = p.weeks.filter(w => tOf(w.weekStart) > preserveThrough).map(w => {
     const runs = w.sessions.filter(x => x.sport === 'run' && x.date >= todayIso()).map(x => ({
       k: x.type === 'quality' ? 'q' : x.type === 'long' ? 'l' : x.type === 'race' ? 'r' : 'e',
-      d: dayLabel(x.date), iso: x.date, t: x.title, km: +x.distanceKm || 0, x: x.details || '',
+      d: dayLabel(x.date), iso: x.date, t: x.title, km: +x.distanceKm || 0, x: x.details || '', workout: x.workout || null,
       race: x.type === 'race', prio: x.priority || 'C', txt: x.type === 'race' ? ((+x.distanceKm || 0) + ' km') : undefined
     }));
     const other = w.sessions.filter(x => x.sport !== 'run' && x.date >= todayIso()).map(x => ({ ...x }));
@@ -932,8 +974,8 @@ function validAct(a) {
   if (a.do === 'add_goal') return d(a.date) && typeof a.name === 'string' && a.name.trim() && Number.isFinite(+a.runKm) && +a.runKm >= 0 && Number.isFinite(+a.rideKm) && +a.rideKm >= 0 && ['trail', 'combo', 'ride'].includes(a.gtype) && ['A', 'B', 'C'].includes(a.prio);
   if (a.do === 'days_off') return Array.isArray(a.dates) && a.dates.length > 0 && a.dates.every(x => d(x) && x >= todayIso());
   if (a.do === 'scale_week') return d(a.week) && Number.isFinite(+a.factor) && +a.factor >= 0.3 && +a.factor <= 1.2 && weekStart(a.week + 'T00:00:00Z') >= curWeek();
-  if (a.do === 'edit_session') return d(a.sessionDate) && d(a.date) && a.sessionDate >= todayIso() && a.date >= todayIso() && !offs.includes(a.date) && weekStart(a.sessionDate + 'T00:00:00Z') === weekStart(a.date + 'T00:00:00Z') && ['run','bike','strength'].includes(a.sport || 'run') && typeof a.sessionTitle === 'string' && a.sessionTitle.trim() && (a.newTitle === null || typeof a.newTitle === 'string') && (a.newKm === null || (Number.isFinite(+a.newKm) && +a.newKm >= 0 && +a.newKm <= 100)) && (a.newDurationMin === null || (Number.isFinite(+a.newDurationMin) && +a.newDurationMin >= 5 && +a.newDurationMin <= 600)) && (a.details === null || typeof a.details === 'string');
-  if (a.do === 'replace_week') return d(a.weekStart) && new Date(a.weekStart + 'T00:00:00Z').getUTCDay() === 1 && weekStart(a.weekStart + 'T00:00:00Z') >= curWeek() && ['base','spec','recup','taper','race','post'].includes(a.kind) && typeof a.phase === 'string' && a.phase.trim() && Number.isFinite(+a.targetRunKm) && +a.targetRunKm >= 0 && +a.targetRunKm <= 200 && Array.isArray(a.sessions) && a.sessions.length <= 12 && a.sessions.every(x => x && d(x.date) && x.date >= todayIso() && weekStart(x.date + 'T00:00:00Z') === weekStart(a.weekStart + 'T00:00:00Z') && ['run','bike','strength'].includes(x.sport) && typeof x.title === 'string' && x.title.trim() && (x.sport !== 'run' || (Number.isFinite(+x.distanceKm) && +x.distanceKm >= 0 && +x.distanceKm <= 100)) && (x.sport !== 'bike' || Number.isFinite(+x.durationMin) || Number.isFinite(+x.distanceKm)) && (x.details == null || typeof x.details === 'string')) && Math.abs(a.sessions.filter(x => x.sport === 'run').reduce((n,x)=>n+(+x.distanceKm||0),0) - (+a.targetRunKm)) <= 1.5;
+  if (a.do === 'edit_session') return d(a.sessionDate) && d(a.date) && a.sessionDate >= todayIso() && a.date >= todayIso() && !offs.includes(a.date) && weekStart(a.sessionDate + 'T00:00:00Z') === weekStart(a.date + 'T00:00:00Z') && ['run','bike','strength'].includes(a.sport || 'run') && typeof a.sessionTitle === 'string' && a.sessionTitle.trim() && (a.newTitle === null || typeof a.newTitle === 'string') && (a.newKm === null || (Number.isFinite(+a.newKm) && +a.newKm >= 0 && +a.newKm <= 100)) && (a.newDurationMin === null || (Number.isFinite(+a.newDurationMin) && +a.newDurationMin >= 5 && +a.newDurationMin <= 600)) && (a.details === null || typeof a.details === 'string') && (a.workout === null || validWorkout(a.workout));
+  if (a.do === 'replace_week') return d(a.weekStart) && new Date(a.weekStart + 'T00:00:00Z').getUTCDay() === 1 && weekStart(a.weekStart + 'T00:00:00Z') >= curWeek() && ['base','spec','recup','taper','race','post'].includes(a.kind) && typeof a.phase === 'string' && a.phase.trim() && Number.isFinite(+a.targetRunKm) && +a.targetRunKm >= 0 && +a.targetRunKm <= 200 && Array.isArray(a.sessions) && a.sessions.length <= 12 && a.sessions.every(x => x && d(x.date) && x.date >= todayIso() && weekStart(x.date + 'T00:00:00Z') === weekStart(a.weekStart + 'T00:00:00Z') && ['run','bike','strength'].includes(x.sport) && typeof x.title === 'string' && x.title.trim() && (x.sport !== 'run' || (Number.isFinite(+x.distanceKm) && +x.distanceKm >= 0 && +x.distanceKm <= 100)) && (x.sport !== 'bike' || Number.isFinite(+x.durationMin) || Number.isFinite(+x.distanceKm)) && (x.details == null || typeof x.details === 'string') && (x.workout == null || validWorkout(x.workout))) && Math.abs(a.sessions.filter(x => x.sport === 'run').reduce((n,x)=>n+(+x.distanceKm||0),0) - (+a.targetRunKm)) <= 1.5;
   return false;
 }
 const actLabel = a => a.do === 'add_absence' ? 'Ajouter l’absence « ' + a.name + ' » (' + fmtD(a.start) + ' → ' + fmtD(a.end) + ', course ' + clamp(+a.runPct || 0, 0, 100) + ' %)' 
@@ -1019,7 +1061,7 @@ function applyAct(mi, ai) {
     const wt = weekStart(a.weekStart + 'T00:00:00Z');
     const w = plan && plan.weeks.find(x => x.t === wt);
     if (!w) return alert('Cette semaine n’existe plus dans le programme. Demandez une nouvelle proposition.');
-    const runs = a.sessions.filter(x => x.sport === 'run').map(x => ({ k: x.type === 'quality' ? 'q' : x.type === 'long' ? 'l' : x.type === 'race' ? 'r' : 'e', d: dayLabel(x.date), iso: x.date, t: x.title, km: +x.distanceKm || 0, x: x.details || '', race: x.type === 'race', prio: x.priority || 'C', txt: x.type === 'race' ? ((+x.distanceKm || 0) + ' km') : undefined }));
+    const runs = a.sessions.filter(x => x.sport === 'run').map(x => ({ k: x.type === 'quality' ? 'q' : x.type === 'long' ? 'l' : x.type === 'race' ? 'r' : 'e', d: dayLabel(x.date), iso: x.date, t: x.title, km: +x.distanceKm || 0, x: x.details || '', workout: x.workout || null, race: x.type === 'race', prio: x.priority || 'C', txt: x.type === 'race' ? ((+x.distanceKm || 0) + ' km') : undefined }));
     const other = a.sessions.filter(x => x.sport !== 'run').map(x => ({ ...x }));
     w.runs = runs; w.vol = runs.reduce((n,x)=>n+(+x.km||0),0); w.kind = a.kind; w.phase = a.phase; w.note = a.note || ''; w.coachManaged = true; w.coachSessions = other; w.strengthSessions = other.filter(x=>x.sport==='strength'); w.bikeMin = 0; w.bikeKm = other.filter(x=>x.sport==='bike').reduce((n,x)=>n+(+x.distanceKm||0),0);
     plan.source = 'coach'; plan.gen = Date.now(); save(KP, plan);
@@ -1033,17 +1075,17 @@ function applyAct(mi, ai) {
       if (sport === 'run') {
         const r = w && w.runs.find(x => x.iso === a.sessionDate && x.t === a.sessionTitle && !x.race);
         if (!r) return alert('La séance a changé depuis la proposition. Demandez au coach de repartir du programme affiché.');
-        r.iso = a.date; if (a.newTitle) r.t = a.newTitle; if (a.newKm !== null && a.newKm !== undefined) r.km = +a.newKm; if (a.details !== null) r.x = a.details;
+        r.iso = a.date; if (a.newTitle) r.t = a.newTitle; if (a.newKm !== null && a.newKm !== undefined) r.km = +a.newKm; if (a.details !== null) r.x = a.details; if (a.workout !== null && a.workout !== undefined) r.workout = a.workout;
         w.vol = w.runs.reduce((n, x) => n + (+x.km || 0), 0);
       } else {
         const r = w && (w.coachSessions || []).find(x => x.date === a.sessionDate && x.title === a.sessionTitle && x.sport === sport);
         if (!r) return alert('La séance a changé depuis la proposition. Demandez au coach de repartir du programme affiché.');
-        r.date = a.date; if (a.newTitle) r.title = a.newTitle; if (a.newKm !== null && a.newKm !== undefined) r.distanceKm = +a.newKm; if (a.newDurationMin !== null && a.newDurationMin !== undefined) r.durationMin = +a.newDurationMin; if (a.details !== null) r.details = a.details;
+        r.date = a.date; if (a.newTitle) r.title = a.newTitle; if (a.newKm !== null && a.newKm !== undefined) r.distanceKm = +a.newKm; if (a.newDurationMin !== null && a.newDurationMin !== undefined) r.durationMin = +a.newDurationMin; if (a.details !== null) r.details = a.details; if (a.workout !== null && a.workout !== undefined) r.workout = a.workout;
         if (sport === 'strength') w.strengthSessions = w.coachSessions.filter(x => x.sport === 'strength');
       }
       plan.gen = Date.now(); save(KP, plan);
     } else {
-      sessEdits[a.sessionDate] = { sessionDate: a.sessionDate, date: a.date, sessionTitle: a.sessionTitle, newTitle: a.newTitle, newKm: a.newKm, details: a.details };
+      sessEdits[a.sessionDate] = { sessionDate: a.sessionDate, date: a.date, sessionTitle: a.sessionTitle, newTitle: a.newTitle, newKm: a.newKm, details: a.details, workout: a.workout };
       save(KX, sessEdits);
     }
   }
@@ -1117,7 +1159,7 @@ function coachPage() {
         '<div class="m">' + weekCount + ' semaines · ' + runCount + ' séances de course · ' + bikeCount + ' séances vélo · ' + strengthCount + ' séances de renforcement</div>' +
         (function(){ const d = programProposalDiff(pp); return '<div class="adv" style="margin-top:8px"><b>Comparaison avec le programme actuel</b><div class="m">' + d.addedOrChanged + ' séance(s) nouvelle(s) ou modifiée(s) · ' + d.removedOrChanged + ' séance(s) retirée(s) ou remplacée(s)</div><div class="m">' + d.oldCount + ' séance(s) actuellement planifiée(s) → ' + d.nextCount + ' dans la proposition</div></div>'; })() +
         (pp.phases && pp.phases.length ? '<div style="margin-top:8px">' + pp.phases.map(ph => '<div class="m">• ' + esc(ph.name || ph.title || '') + (ph.description ? ' : ' + esc(ph.description) : '') + '</div>').join('') + '</div>' : '') +
-        '<details style="margin-top:9px"><summary><b>Aperçu des semaines</b> <span class="m">· Afficher</span></summary>' + pp.weeks.map(w => '<div class="row"><div><b>' + fmtD(w.weekStart) + ' · ' + esc(w.phase) + '</b><div class="m">' + w.sessions.map(x => esc(x.title) + (x.sport === 'run' ? ' (' + x.distanceKm + ' km)' : '')).join(' · ') + '</div></div><div class="r">' + (+w.targetRunKm).toFixed(0) + ' km</div></div>').join('') + '</details>' +
+        '<details style="margin-top:9px"><summary><b>Aperçu des semaines</b> <span class="m">· Afficher</span></summary>' + pp.weeks.map(w => '<div class="row"><div><b>' + fmtD(w.weekStart) + ' · ' + esc(w.phase) + '</b><div class="m">' + w.sessions.map(x => esc(x.title) + (x.sport === 'run' ? ' (' + x.distanceKm + ' km)' : '') + (x.workout && x.workout.steps ? ' · séance détaillée' : '') + (x.workout && x.workout.exercises ? ' · exercices détaillés' : '')).join(' · ') + w.sessions.map(x => workoutMarkup(x.workout)).join('') + '</div></div><div class="r">' + (+w.targetRunKm).toFixed(0) + ' km</div></div>').join('') + '</details>' +
         (!m.programApplied && !m.programRejected && !m.programSuperseded ? '<button class="b" onclick="applyProgramProposal(' + mi + ')">Valider le nouveau programme</button><button class="b alt" onclick="rejectProgramProposal(' + mi + ')">Refuser cette proposition</button>' : '') + '</div>';
     }
     (m.actions || []).forEach((a, ai) => {
@@ -1217,12 +1259,12 @@ function vGear() {
 /* ---------- Vues ---------- */
 function sessRow(r, ok, dt) {
   return '<div class="sess' + (ok ? ' done' : '') + '"><div class="row" style="border:0;padding:0"><div><div class="n run">' + (ok ? '✓ ' : '') + esc(r.t) + '</div><div class="m">' + esc(dt || r.d) + '</div></div>' +
-    '<div class="r"><b>' + (r.race ? esc(r.txt) : r.km + ' km') + '</b></div></div>' + (r.x ? '<div class="m">' + esc(r.x) + '</div>' : '') + '</div>';
+    '<div class="r"><b>' + (r.race ? esc(r.txt) : r.km + ' km') + '</b></div></div>' + (r.x ? '<div class="m">' + esc(r.x) + '</div>' : '') + workoutMarkup(r.workout) + '</div>';
 }
 function strengthBlock(w) {
   if (Array.isArray(w.strengthSessions)) {
     if (!w.strengthSessions.length) return '';
-    return w.strengthSessions.map(x => '<div class="sess"><div class="n">' + esc(x.title) + '</div><div class="m">' + dayLabel(x.date) + (x.durationMin ? ' · ' + x.durationMin + ' min' : '') + '</div>' + (x.details ? '<div class="m">' + esc(x.details) + '</div>' : '') + '</div>').join('');
+    return w.strengthSessions.map(x => '<div class="sess"><div class="n">' + esc(x.title) + '</div><div class="m">' + dayLabel(x.date) + (x.durationMin ? ' · ' + x.durationMin + ' min' : '') + '</div>' + (x.details ? '<div class="m">' + esc(x.details) + '</div>' : '') + workoutMarkup(x.workout) + '</div>').join('');
   }
   // Keep strength deliberately light in recovery, taper and race weeks.
   if (w.kind === 'race') return '<div class="sess"><div class="n">Renforcement</div><div class="m">Pas de séance de force cette semaine : priorité à la fraîcheur et à la course.</div></div>';
@@ -1237,7 +1279,7 @@ function strengthBlock(w) {
 function bikeRow(w, done) {
   const cm = w.t <= curWeek() ? commuteWeek(w.t) : { n: 0, km: 0 };
   const plannedBike = Array.isArray(w.coachSessions) ? w.coachSessions.filter(x => x.sport === 'bike') : [];
-  const customBike = plannedBike.map(x => '<div class="m"><b class="ride">' + esc(x.title) + '</b> · ' + dayLabel(x.date) + (x.durationMin ? ' · ' + x.durationMin + ' min' : '') + (x.distanceKm ? ' · ' + x.distanceKm + ' km' : '') + (x.details ? '<br>' + esc(x.details) : '') + '</div>').join('');
+  const customBike = plannedBike.map(x => '<div class="m"><b class="ride">' + esc(x.title) + '</b> · ' + dayLabel(x.date) + (x.durationMin ? ' · ' + x.durationMin + ' min' : '') + (x.distanceKm ? ' · ' + x.distanceKm + ' km' : '') + (x.details ? '<br>' + esc(x.details) : '') + workoutMarkup(x.workout) + '</div>').join('');
   if (!w.bikeMin && !w.brick && !cm.n && !customBike) return '';
   let s = '<div class="sess">';
   if (cm.n) s += '<div class="n ride">Vélotaf : ' + cm.n + ' trajet' + (cm.n > 1 ? 's' : '') + ' · ' + cm.km.toFixed(0) + ' km</div>';
