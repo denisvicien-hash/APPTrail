@@ -6,12 +6,12 @@
 <meta name="theme-color" content="#0c0d0f">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="TERRO">
+<meta name="apple-mobile-web-app-title" content="MENDI Training">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icon-180.png">
 <link rel="icon" href="icon-192.png" type="image/png">
-<title>TERRO training</title>
+<title>MENDI Training</title>
 <style>
 :root{--bg:#0c0d0f;--card:#17191c;--card2:#0f1113;--line:#2a2e33;--txt:#ece6d8;--mut:#9b9a93;--run:#f97316;--ride:#38bdf8;--ok:#4ade80;--warn:#facc15;--ko:#f87171;
 --k-base:#38bdf8;--k-spec:#f97316;--k-recup:#4ade80;--k-taper:#a78bfa;--k-race:#facc15;--k-post:#9b9a93}
@@ -24,10 +24,32 @@ h1{margin:0;font-size:19px;letter-spacing:.14em;font-weight:800}
 h1 span{font-weight:400;letter-spacing:.06em;color:var(--mut)}
 .sub{color:var(--mut);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #sy{width:44px;height:44px;border-radius:22px;border:1px solid var(--line);background:var(--card);color:var(--txt);font-size:20px;flex:none}
-nav{position:fixed;left:0;right:0;bottom:0;display:flex;background:#08090a;border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom)}
-nav button{flex:1;display:flex;flex-direction:column;align-items:center;gap:1px;padding:8px 0 10px;background:none;border:0;color:var(--mut);font-size:10.5px}
-nav button i{font-style:normal;font-size:19px}
-nav button.on{color:var(--txt);font-weight:600}
+nav{
+  position:fixed;z-index:20;left:0;right:0;bottom:0;display:flex;
+  background:rgba(8,9,10,.94);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);
+  border-top:1px solid rgba(236,230,216,.09);
+  padding:7px 8px calc(7px + env(safe-area-inset-bottom));
+  box-shadow:0 -10px 30px rgba(0,0,0,.18)
+}
+nav button{
+  position:relative;flex:1;min-width:0;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;gap:4px;padding:3px 0 2px;
+  background:none;border:0;color:#777a7d;font-family:inherit;font-size:10px;font-weight:500;line-height:1.1;
+  cursor:pointer;-webkit-tap-highlight-color:transparent;transition:color .2s ease
+}
+nav button .nav-icon{
+  width:38px;height:28px;display:flex;align-items:center;justify-content:center;
+  border-radius:10px;transition:background .2s ease,transform .2s ease
+}
+nav button svg{
+  width:21px;height:21px;fill:none;stroke:currentColor;stroke-width:1.65;
+  stroke-linecap:round;stroke-linejoin:round;display:block
+}
+nav button .nav-label{font-size:10px;letter-spacing:.015em;white-space:nowrap}
+nav button.on{color:var(--run);font-weight:650}
+nav button.on .nav-icon{background:rgba(249,115,22,.12);transform:translateY(-1px)}
+nav button:focus-visible{outline:1px solid var(--run);outline-offset:-2px;border-radius:10px}
+@media (prefers-reduced-motion:reduce){nav button,nav button .nav-icon{transition:none}}
 .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px;margin:12px 0}
 .card h2{margin:0 0 8px;font-size:14px;color:var(--mut);font-weight:600}
 .warn{border-color:#a16207;background:#241d08}
@@ -88,20 +110,59 @@ ul{padding-left:20px;margin:6px 0}
 .th.sel{border-color:var(--txt);opacity:1}
 .chip{display:inline-block;font-size:11px;font-weight:700;padding:1px 8px;border-radius:99px;border:1px solid var(--line)}
 .gb{height:10px}
+
+/* MENDI Training — identité premium & performance */
+:root{--bg:#0a0c0f;--card:#14181d;--card2:#101419;--line:#29313a;--txt:#f2f1ec;--mut:#929ba5;--run:#ff7138;--ride:#55c7f2;--ok:#55d69a;--warn:#f4c95d;--ko:#ff7777}
+body{background:radial-gradient(ellipse at 50% -18%,rgba(255,113,56,.09),transparent 42%),var(--bg);letter-spacing:.005em}
+.brand{gap:12px}
+.lg{border:1px solid rgba(255,255,255,.12);box-shadow:0 5px 18px rgba(0,0,0,.28)}
+h1{font-size:18px;letter-spacing:.16em;font-weight:850;line-height:1.05}
+h1 span{display:block;margin-top:4px;font-size:9px;font-weight:750;letter-spacing:.27em;color:var(--mut)}
+.sub{margin-top:4px}
+.card{background:linear-gradient(145deg,rgba(25,30,36,.98),rgba(18,22,27,.98));border:1px solid rgba(174,190,205,.13);border-radius:16px;padding:16px;box-shadow:0 8px 24px rgba(0,0,0,.14)}
+.card h2{font-size:11px;letter-spacing:.11em;text-transform:uppercase;color:#aeb7c0}
+.kpi b{font-size:25px;letter-spacing:-.035em;font-weight:780}
+.pill{font-size:10px;letter-spacing:.045em;text-transform:uppercase}
+button.b{background:linear-gradient(135deg,#ff7a3d,#e85b25);border-color:#ff7a3d;box-shadow:0 5px 16px rgba(255,113,56,.16)}
+button.b.alt{background:rgba(255,255,255,.025)}
+input:focus,select:focus,textarea:focus,button.b:focus-visible,#sy:focus-visible{outline:2px solid rgba(255,113,56,.72);outline-offset:2px;border-color:var(--run)}
+#sy{background:linear-gradient(145deg,#1b2229,#11161b);border-color:rgba(174,190,205,.18)}
+nav{background:rgba(9,12,15,.88);border-top-color:rgba(174,190,205,.13);box-shadow:0 -12px 34px rgba(0,0,0,.32)}
+nav button.on .nav-icon{background:linear-gradient(145deg,rgba(255,113,56,.19),rgba(255,113,56,.07));box-shadow:inset 0 0 0 1px rgba(255,113,56,.12)}
+.rc{border-radius:17px;border-color:rgba(174,190,205,.18)}
+.msg.u{background:rgba(37,99,235,.22);border:1px solid rgba(85,199,242,.15)}
+.msg.a,.adv{background:#11161b;border-color:rgba(174,190,205,.13)}
+@media(min-width:700px){body{max-width:760px;margin:0 auto}.cars{margin-left:-16px;margin-right:-16px}}
+
 </style>
 </head>
 <body>
 <header>
-  <div class="brand"><img class="lg" src="logo.png" alt=""><div style="min-width:0"><h1>TERRO <span>training</span></h1><div class="sub" id="status"></div></div></div>
+  <div class="brand"><img class="lg" src="logo.png" alt=""><div style="min-width:0"><h1>MENDI <span>TRAINING</span></h1><div class="sub" id="status"></div></div></div>
   <button id="sy" onclick="sync()" title="Synchroniser Strava">↻</button>
 </header>
 <main id="view"></main>
-<nav>
-  <button data-t="home"><i>🏠</i>Accueil</button>
-  <button data-t="plan"><i>📅</i>Programme</button>
-  <button data-t="acts"><i>🏃</i>Activités</button>
-  <button data-t="gear"><i>🔧</i>Matériel</button>
-  <button data-t="cfg"><i>⚙️</i>Réglages</button>
+<nav aria-label="Navigation principale">
+  <button data-t="home" aria-label="Accueil">
+    <span class="nav-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 10 9-7 9 7"/><path d="M5 9v11h14V9M9 20v-6h6v6"/></svg></span>
+    <span class="nav-label">Accueil</span>
+  </button>
+  <button data-t="plan" aria-label="Programme">
+    <span class="nav-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="16" rx="2.5"/><path d="M7.5 3v4M16.5 3v4M3.5 10h17M8 14h3M8 17h7"/></svg></span>
+    <span class="nav-label">Programme</span>
+  </button>
+  <button data-t="acts" aria-label="Activités">
+    <span class="nav-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h3l2.2-6 4.1 12 2.5-7 1.5 3H21"/></svg></span>
+    <span class="nav-label">Activités</span>
+  </button>
+  <button data-t="gear" aria-label="Matériel">
+    <span class="nav-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 7h12l2 3v8H4v-8l2-3Z"/><path d="M8 7l2 5h4l2-5M4 12h16M9 18v2m6-2v2"/></svg></span>
+    <span class="nav-label">Matériel</span>
+  </button>
+  <button data-t="cfg" aria-label="Réglages">
+    <span class="nav-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="m19.4 15 .1.1 1.1 1.9-2 2-1.9-1.1a8 8 0 0 1-1.5.6l-.6 2.1h-2.8l-.6-2.1a8 8 0 0 1-1.5-.6L7.8 19l-2-2 1.1-1.9a8 8 0 0 1-.6-1.5L4.2 13v-2.8l2.1-.6a8 8 0 0 1 .6-1.5L5.8 6.2l2-2 1.9 1.1a8 8 0 0 1 1.5-.6l.6-2.1h2.8l.6 2.1a8 8 0 0 1 1.5.6l1.9-1.1 2 2-1.1 1.9a8 8 0 0 1 .6 1.5l2.1.6V13l-2.1.6a8 8 0 0 1-.6 1.4Z"/></svg></span>
+    <span class="nav-label">Réglages</span>
+  </button>
 </nav>
 
 <script>
@@ -653,7 +714,7 @@ function lighten(f) {
   if (feels[0]) { feels[0].f = null; save(KR, feels) }
   makePlan(true); paint();
 }
-const COACH_SYS = `Tu es le coach de course à pied (trail) et de vélo de l'application TERRO training. Tu réponds en français, avec le vouvoiement, de façon concrète et brève (8 phrases maximum). Tu n'es pas médecin : en cas de douleur qui persiste ou inhabituelle, tu conseilles de consulter. Tu t'appuies uniquement sur le contexte fourni et tu n'inventes aucune donnée.
+const COACH_SYS = `Tu es le coach de course à pied (trail) et de vélo de l'application MENDI Training. Tu réponds en français, avec le vouvoiement, de façon concrète et brève (8 phrases maximum). Tu n'es pas médecin : en cas de douleur qui persiste ou inhabituelle, tu conseilles de consulter. Tu t'appuies uniquement sur le contexte fourni et tu n'inventes aucune donnée.
 Si la demande de l'utilisateur implique de modifier son programme, tu proposes les modifications dans un bloc final au format exact :
 \`\`\`actions
 [ {"do":"add_absence","name":"…","start":"AAAA-MM-JJ","end":"AAAA-MM-JJ","runPct":50,"bike":false},
