@@ -1011,8 +1011,27 @@ function applyAct(mi, ai) {
   else if (a.do === 'add_goal') goals.push({ id: 'g' + Date.now() + ai, name: a.name, type: a.gtype, date: a.date, runKm: +a.runKm || 0, rideKm: +a.rideKm || 0, elev: '', prio: a.prio, img: IMGS[goals.length % 3], confirmed: true }), save(KG, goals);
   else if (a.do === 'days_off') { a.dates.forEach(d => { if (d >= todayIso() && !offs.includes(d)) offs.push(d) }); save(KO, offs) }
   else if (a.do === 'scale_week') { adj[isoOf(weekStart(a.week))] = clamp(+a.factor, 0.3, 1.2); save(KJ, adj) }
-  else if (a.do === 'edit_session') { sessEdits[a.sessionDate] = { sessionDate: a.sessionDate, date: a.date, sessionTitle: a.sessionTitle, newTitle: a.newTitle, newKm: a.newKm, details: a.details }; save(KX, sessEdits) }
-  m.applied[ai] = true; persistChat(); makePlan(true); paint();
+  else if (a.do === 'edit_session') {
+    // Pour un programme IA, modifier directement la séance enregistrée.
+    // makePlan() ne peut pas recalculer ce type de programme.
+    if (plan && plan.source === 'coach') {
+      const w = plan.weeks.find(x => x.t === weekStart(a.sessionDate + 'T00:00:00Z'));
+      const r = w && w.runs.find(x => x.iso === a.sessionDate && x.t === a.sessionTitle && !x.race);
+      if (!r) return alert('La séance a changé depuis la proposition. Demandez au coach de repartir du programme affiché.');
+      r.iso = a.date;
+      if (a.newTitle) r.t = a.newTitle;
+      if (a.newKm !== null && a.newKm !== undefined) r.km = +a.newKm;
+      if (a.details) r.x = a.details;
+      w.vol = w.runs.reduce((n, x) => n + (+x.km || 0), 0);
+      plan.gen = Date.now(); save(KP, plan);
+    } else {
+      sessEdits[a.sessionDate] = { sessionDate: a.sessionDate, date: a.date, sessionTitle: a.sessionTitle, newTitle: a.newTitle, newKm: a.newKm, details: a.details };
+      save(KX, sessEdits);
+    }
+  }
+  m.applied[ai] = true; persistChat();
+  if (!(plan && plan.source === 'coach')) makePlan(true);
+  paint();
 }
 async function sendCoach(text) {
   text = (text || ($('#cin') ? $('#cin').value : '')).trim(); if (!text || chatBusy) return;
