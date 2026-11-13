@@ -857,7 +857,7 @@ function validWorkout(w, depth = 0) {
   return (w.steps == null || Array.isArray(w.steps)) && (w.exercises == null || Array.isArray(w.exercises)) && (w.steps || w.exercises);
 }
 function workoutMarkup(workout) {
-  if (!validWorkout(workout)) return '';
+  if (!workout || !validWorkout(workout)) return '';
   const targetText = t => {
     if (!t) return '';
     if (t.label) return esc(t.label);
