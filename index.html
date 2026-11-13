@@ -135,6 +135,26 @@ nav button.on .nav-icon{background:linear-gradient(145deg,rgba(255,113,56,.19),r
 .msg.a,.adv{background:#11161b;border-color:rgba(174,190,205,.13)}
 @media(min-width:700px){body{max-width:760px;margin:0 auto}.cars{margin-left:-16px;margin-right:-16px}}
 
+
+/* Coach MENDI — page dédiée et historique indépendant */
+nav button{font-size:9px}
+nav button .nav-label{font-size:9px;letter-spacing:0}
+.coach-hero{background:linear-gradient(145deg,rgba(30,43,54,.98),rgba(17,23,29,.98));border:1px solid rgba(85,199,242,.18);border-radius:18px;padding:16px;margin:12px 0}
+.coach-shortcuts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:12px}
+.coach-shortcuts button{margin:0;text-align:left;background:rgba(255,255,255,.035);border:1px solid var(--line);color:var(--txt);border-radius:11px;padding:10px;font-size:13px}
+.coach-chat{display:flex;flex-direction:column;gap:8px}
+.coach-messages{display:flex;flex-direction:column;gap:5px;max-height:none;overflow:visible}
+.coach-compose{position:sticky;bottom:72px;background:rgba(10,12,15,.97);padding:10px 0 calc(8px + env(safe-area-inset-bottom));z-index:5;display:flex;gap:8px;align-items:flex-end}
+.coach-compose input{margin:0;min-width:0;flex:1}
+.coach-compose button{width:auto;min-width:48px;margin:0;padding:10px 14px}
+.chat-tools{display:flex;gap:8px;flex-wrap:wrap}
+.chat-tools button{width:auto;margin:0;font-size:12px;padding:8px 10px}
+.archive-item{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:10px 0;border-bottom:1px solid var(--line)}
+.archive-item:last-child{border:0}
+.archive-item .archive-title{min-width:0;flex:1}
+.archive-item button{width:auto;margin:0;padding:7px 9px;font-size:12px}
+@media(min-width:700px){.coach-compose{bottom:12px}}
+
 </style>
 </head>
 <body>
@@ -152,6 +172,10 @@ nav button.on .nav-icon{background:linear-gradient(145deg,rgba(255,113,56,.19),r
     <span class="nav-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="16" rx="2.5"/><path d="M7.5 3v4M16.5 3v4M3.5 10h17M8 14h3M8 17h7"/></svg></span>
     <span class="nav-label">Programme</span>
   </button>
+  <button data-t="coach" aria-label="Coach MENDI">
+    <span class="nav-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a7 7 0 0 0-4 12.7V19h8v-3.3A7 7 0 0 0 12 3Z"/><path d="M9 22h6M9 16h6M9.5 9.5l1.5 1.5 3-3"/></svg></span>
+    <span class="nav-label">Coach</span>
+  </button>
   <button data-t="acts" aria-label="Activités">
     <span class="nav-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h3l2.2-6 4.1 12 2.5-7 1.5 3H21"/></svg></span>
     <span class="nav-label">Activités</span>
@@ -168,12 +192,24 @@ nav button.on .nav-icon{background:linear-gradient(145deg,rgba(255,113,56,.19),r
 
 <script>
 const $ = s => document.querySelector(s);
-const KC = 'bt_cfg', KA = 'bt_acts', KG = 'bt_goals', KP = 'bt_plan', KF = 'bt_prof', KB = 'bt_abs', KO = 'bt_off', KR = 'bt_feel', KM = 'bt_maint', KS = 'bt_gear', KH = 'bt_chat', KJ = 'bt_adj', KX = 'bt_session_edits';
+const KC = 'bt_cfg', KA = 'bt_acts', KG = 'bt_goals', KP = 'bt_plan', KF = 'bt_prof', KB = 'bt_abs', KO = 'bt_off', KR = 'bt_feel', KM = 'bt_maint', KS = 'bt_gear', KH = 'bt_chat', KJ = 'bt_adj', KX = 'bt_session_edits', KTH = 'bt_chat_threads', KAH = 'bt_chat_archives', KAC = 'bt_chat_active';
 const load = (k, d) => { try { const v = JSON.parse(localStorage.getItem(k)); return v === null || v === undefined ? d : v } catch (e) { return d } };
 const save = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)) } catch (e) { log('Stockage local plein ou indisponible.') } };
 let cfg = load(KC, {}), acts = load(KA, []), goals = load(KG, null), plan = load(KP, null), prof = load(KF, {}), absences = load(KB, null),
   offs = load(KO, []), feels = load(KR, []), maint = load(KM, []), gears = load(KS, []), chat = load(KH, []), adj = load(KJ, {}), sessEdits = load(KX, {});
 let tab = 'home', filt = 'all', chatBusy = false; const openK = {}, imgSel = {}, imgTmp = {};
+let chatThreads = load(KTH, []), archivedChats = load(KAH, []), activeChatId = load(KAC, '');
+// Migration de l'ancien historique unique vers une conversation active indépendante.
+if (!chatThreads.length) {
+  activeChatId = 'mendi-' + Date.now();
+  chatThreads = [{ id: activeChatId, title: 'Conversation principale', updated: Date.now(), messages: chat.slice(-30) }];
+  save(KTH, chatThreads); save(KAC, activeChatId);
+} else if (!chatThreads.some(t => t.id === activeChatId)) {
+  activeChatId = chatThreads[0].id; save(KAC, activeChatId);
+}
+let activeThread = chatThreads.find(t => t.id === activeChatId) || chatThreads[0];
+chat = Array.isArray(activeThread.messages) ? activeThread.messages : chat;
+
 // Migration sécurisée : supprime une éventuelle ancienne clé Anthropic stockée localement.
 if (cfg.ai) { delete cfg.ai; delete cfg.model; save(KC, cfg); }
 const DAY = 864e5, WK = 7 * DAY;
@@ -393,7 +429,7 @@ function demo() {
   gears.filter(g => g.demo).forEach(g => g.km = Math.round(gearKm(g.id)));
   save(KS, gears); log('Données de démonstration chargées.'); paint();
 }
-const ALLK = [KC, KG, KP, KF, KB, KO, KR, KM, KS, KH, KJ];
+const ALLK = [KC, KG, KP, KF, KB, KO, KR, KM, KS, KH, KJ, KTH, KAH, KAC];
 function exportData() {
   const d = { v: 4 }; ALLK.forEach(k => d[k] = JSON.parse(localStorage.getItem(k) || 'null'));
   const t = $('#xp'); t.value = JSON.stringify(d); t.focus(); t.select();
@@ -752,7 +788,7 @@ function coachContext() {
   const fo = offs.filter(d => d >= todayIso()); if (fo.length) L.push('Jours off déjà posés : ' + fo.join(', ') + '.');
   if (feels.length) L.push('Derniers ressentis : ' + feels.slice(0, 5).map(e => e.date + ' forme ' + e.energy + '/5, douleur ' + e.pain + (e.note ? ' (' + e.note + ')' : '')).join(' ; '));
   const pending = [];
-  chat.forEach(m => (m.actions || []).forEach((a, i) => { if (!(m.applied || [])[i]) pending.push(actLabel(a)); }));
+  [chat, ...archivedChats.map(c => c.messages || [])].flat().forEach(m => (m.actions || []).forEach((a, i) => { if (!(m.applied || [])[i]) pending.push(actLabel(a)); }));
   if (pending.length) L.push('Propositions de programme encore en attente de validation : ' + pending.join(' ; '));
   return L.join('\n');
 }
@@ -784,6 +820,50 @@ function parseCoach(payload) {
   if (m) { try { list = JSON.parse(m[1]) } catch (_) {} }
   return { text: m ? raw.replace(m[0], '').trim() : raw, actions: (Array.isArray(list) ? list : []).filter(validAct) };
 }
+function chatTitle(messages) {
+  const first = (messages || []).find(m => m.r === 'u' && m.t);
+  return first ? String(first.t).replace(/\s+/g, ' ').slice(0, 54) : 'Conversation sans titre';
+}
+function persistChat() {
+  chat = chat.slice(-30); save(KH, chat);
+  const t = chatThreads.find(x => x.id === activeChatId);
+  if (t) { t.messages = chat; t.updated = Date.now(); if (t.title === 'Conversation principale' && chat.length) t.title = chatTitle(chat); }
+  else chatThreads.push({ id: activeChatId, title: chatTitle(chat), updated: Date.now(), messages: chat });
+  save(KTH, chatThreads); save(KAC, activeChatId);
+}
+function archiveCurrentChat() {
+  if (!chat.length) { chatThreads = chatThreads.filter(x => x.id !== activeChatId); save(KTH, chatThreads); return; }
+  const t = chatThreads.find(x => x.id === activeChatId) || { id: activeChatId, title: chatTitle(chat), updated: Date.now(), messages: chat };
+  t.messages = chat.slice(-30); t.title = chatTitle(chat); t.updated = Date.now();
+  archivedChats.unshift(t); archivedChats = archivedChats.slice(0, 50); save(KAH, archivedChats);
+  chatThreads = chatThreads.filter(x => x.id !== activeChatId); save(KTH, chatThreads);
+}
+function newChat() {
+  if (chatBusy) return;
+  if (chat.length && !confirm('Démarrer une nouvelle discussion ? La conversation actuelle sera archivée et restera consultable.')) return;
+  archiveCurrentChat();
+  activeChatId = 'mendi-' + Date.now() + '-' + Math.floor(Math.random()*10000);
+  chat = []; chatThreads.push({ id: activeChatId, title: 'Nouvelle discussion', updated: Date.now(), messages: [] });
+  save(KTH, chatThreads); save(KH, chat); save(KAC, activeChatId); paint();
+}
+function restoreChat(id) {
+  if (chatBusy) return;
+  if (!archivedChats.some(x => x.id === id)) return;
+  if (chat.length && !confirm('La discussion actuelle sera archivée avant de rouvrir celle-ci. Continuer ?')) return;
+  archiveCurrentChat();
+  const i = archivedChats.findIndex(x => x.id === id); if (i < 0) return;
+  const t = archivedChats.splice(i, 1)[0]; save(KAH, archivedChats);
+  activeChatId = t.id; chat = (t.messages || []).slice(-30); chatThreads.push({ ...t, messages: chat });
+  save(KTH, chatThreads); save(KH, chat); save(KAC, activeChatId); paint();
+}
+function deleteArchivedChat(id) {
+  if (!confirm('Supprimer définitivement cette conversation ? Le programme et les activités sportives seront conservés.')) return;
+  archivedChats = archivedChats.filter(x => x.id !== id); save(KAH, archivedChats); paint();
+}
+function clearChat() {
+  if (!confirm('Effacer les messages de cette conversation ? Les séances, le programme et les objectifs resteront intacts.')) return;
+  chat = []; persistChat(); paint();
+}
 function applyAct(mi, ai) {
   const m = chat[mi]; if (!m || !m.actions) return;
   if (!Array.isArray(m.applied)) m.applied = [];
@@ -800,14 +880,14 @@ function applyAct(mi, ai) {
   else if (a.do === 'days_off') { a.dates.forEach(d => { if (d >= todayIso() && !offs.includes(d)) offs.push(d) }); save(KO, offs) }
   else if (a.do === 'scale_week') { adj[isoOf(weekStart(a.week))] = clamp(+a.factor, 0.3, 1.2); save(KJ, adj) }
   else if (a.do === 'edit_session') { sessEdits[a.sessionDate] = { sessionDate: a.sessionDate, date: a.date, sessionTitle: a.sessionTitle, newTitle: a.newTitle, newKm: a.newKm, details: a.details }; save(KX, sessEdits) }
-  m.applied[ai] = true; save(KH, chat.slice(-30)); makePlan(true); paint();
+  m.applied[ai] = true; persistChat(); makePlan(true); paint();
 }
 async function sendCoach(text) {
   text = (text || ($('#cin') ? $('#cin').value : '')).trim(); if (!text || chatBusy) return;
   chat.push({ r: 'u', t: text });
   if (!cfg.aiEndpoint) {
     chat.push({ r: 'a', t: 'Pour discuter avec le coach, configurez l’adresse du relais OpenAI dans Réglages > Coach IA. Les conseils rapides du ressenti restent disponibles sans connexion.', actions: [], applied: [], err: true });
-    save(KH, chat.slice(-30)); return paint();
+    persistChat(); return paint();
   }
   chatBusy = true; paint();
   try {
@@ -822,37 +902,65 @@ async function sendCoach(text) {
     if (!p.text) throw new Error('Le relais OpenAI a renvoyé une réponse vide.');
     chat.push({ r: 'a', t: p.text, actions: p.actions, applied: [] });
   } catch (e) { chat.push({ r: 'a', t: 'Erreur : ' + netHint(e), actions: [], applied: [], err: true }) }
-  chatBusy = false; save(KH, chat.slice(-30)); paint();
+  chatBusy = false; persistChat(); paint();
 }
 function saveAI() {
   const endpoint = $('#aiendpoint').value.trim().replace(/\/$/, '');
   if (endpoint && !/^https:\/\//i.test(endpoint)) return alert('L’adresse du relais doit commencer par https://');
   cfg.aiEndpoint = endpoint; delete cfg.ai; delete cfg.model; save(KC, cfg); log(endpoint ? 'Adresse du relais OpenAI enregistrée sur cet appareil.' : 'Connexion au coach désactivée.'); paint();
 }
-function clearChat() { chat = []; save(KH, chat); paint() }
-function coachCard() {
+function feelCard() {
   const last = feels[0], o = (v, t, s) => '<option value="' + v + '"' + (s === v ? ' selected' : '') + '>' + t + '</option>';
-  let h = '<div class="card"><h2>Coach &amp; ressenti</h2>' +
+  let h = '<div class="card"><h2>Mon état de forme</h2>' +
     '<label>Forme du jour</label><select id="fe">' + [[1, '1 · épuisé'], [2, '2 · fatigué'], [3, '3 · correct'], [4, '4 · en forme'], [5, '5 · très en forme']].map(([v, t]) => o(v, t, 3)).join('') + '</select>' +
     '<label>Douleur ou gêne</label><select id="fp">' + o('none', 'Aucune', 'none') + o('mild', 'Légère (à surveiller)') + o('strong', 'Gênante (elle change ma foulée)') + '</select>' +
-    '<label>Précisions (facultatif)</label><input id="fn" placeholder="Ex : mollets lourds, mauvaise nuit…">' +
-    '<button class="b" onclick="saveFeel()">' + (cfg.aiEndpoint ? 'Enregistrer et demander l’avis du coach' : 'Enregistrer mon ressenti') + '</button>';
-  if (last && last.advice) {
-    h += '<div class="adv"><small>' + fmtD(last.date) + ' · forme ' + last.energy + '/5</small><div>' + esc(last.advice) + '</div>' +
-      (last.f ? '<button class="b alt" style="margin:8px 0 0" onclick="lighten(' + last.f + ')">Alléger cette semaine de ' + Math.round((1 - last.f) * 100) + ' %</button>' : '') + '</div>';
-  }
-  const ms = chat.slice(-8), off = chat.length - ms.length;
-  ms.forEach((m, j) => {
-    const mi = off + j;
+    '<label>Précisions (facultatif)</label><input id="fn" placeholder="Ex : quadriceps courbaturés après les descentes…">' +
+    '<button class="b alt" onclick="saveFeel()">' + (cfg.aiEndpoint ? 'Envoyer mon ressenti au coach' : 'Enregistrer mon ressenti') + '</button>';
+  if (last && last.advice) h += '<div class="adv"><small>' + fmtD(last.date) + ' · forme ' + last.energy + '/5</small><div>' + esc(last.advice) + '</div>' +
+    (last.f ? '<button class="b alt" style="margin:8px 0 0" onclick="lighten(' + last.f + ')">Alléger cette semaine de ' + Math.round((1 - last.f) * 100) + ' %</button>' : '') + '</div>';
+  return h + '</div>';
+}
+function coachPage() {
+  let h = '<section class="coach-hero"><div style="display:flex;align-items:center;gap:10px"><div style="width:42px;height:42px;border-radius:14px;background:rgba(85,199,242,.13);display:grid;place-items:center"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--ride)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a7 7 0 0 0-4 12.7V19h8v-3.3A7 7 0 0 0 12 3Z"/><path d="M9 22h6M9 16h6"/></svg></div><div><h2 style="margin:0;color:var(--txt);font-size:17px;letter-spacing:0;text-transform:none">Coach MENDI</h2><div class="m">Votre partenaire trail, vélo et renforcement</div></div></div>';
+  h += '<p class="m" style="margin:12px 0 0">Le coach connaît votre programme actuel et vos derniers ressentis. Il peut proposer des ajustements, mais rien ne change sans votre validation.</p>';
+  h += '<div class="coach-shortcuts">' +
+    '<button onclick="quickCoach(\'Fais le point sur ma semaine et mes prochaines séances.\')">▦ &nbsp;Faire le point sur ma semaine</button>' +
+    '<button onclick="quickCoach(\'Je suis fatigué / j’ai des courbatures. Aide-moi à adapter la charge.\')">♡ &nbsp;Analyser ma fatigue</button>' +
+    '<button onclick="quickCoach(\'Propose-moi une séance de renforcement adaptée à ma préparation trail et à ma récupération.\')">✚ &nbsp;Renforcement musculaire</button>' +
+    '<button onclick="quickCoach(\'Aide-moi à préparer mon prochain trail en tenant compte de mon programme.\')">⌁ &nbsp;Préparer mon trail</button></div></section>';
+  h += '<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><h2 style="margin:0">Discussion en cours</h2><span class="chip">' + chat.length + ' messages</span></div>';
+  h += '<div class="chat-tools" style="margin-top:10px"><button class="b alt" onclick="newChat()">＋ Nouvelle discussion</button><button class="b alt" onclick="archiveOnly()">Archiver</button><button class="b alt" onclick="clearChat()">Vider</button></div>';
+  if (!cfg.aiEndpoint) h += '<div class="adv warn" style="margin-top:12px">Le coach n’est pas connecté. Configurez l’adresse du relais OpenAI dans Réglages → Coach IA.</div>';
+  if (!chat.length) h += '<div class="msg a" style="margin-top:14px">Bonjour ! Je peux vous aider à adapter votre préparation, analyser votre fatigue et équilibrer course, vélo et renforcement. Que souhaitez-vous travailler aujourd’hui ?</div>';
+  h += '<div class="coach-messages" style="margin-top:12px">';
+  chat.slice(-30).forEach((m, j) => {
+    const mi = Math.max(0, chat.length - 30) + j;
     h += '<div class="msg ' + m.r + '">' + esc(m.t) + '</div>';
     const applied = Array.isArray(m.applied) ? m.applied : [];
-    if ((m.actions || []).some((a, ai) => !applied[ai])) h += '<div class="adv" style="margin:8px 0"><b>Proposition en attente de votre accord</b><div class="m">Votre programme n’a pas été modifié. Validez chaque changement séparément ; vous pouvez aussi ne rien appliquer.</div></div>';
-    (m.actions || []).forEach((a, ai) => { h += '<button class="b ' + (applied[ai] ? 'alt' : '') + '" style="margin:2px 0 6px;font-size:14px;font-weight:500;text-align:left"' + (applied[ai] ? ' disabled' : ' onclick="applyAct(' + mi + ',' + ai + ')"') + '>' + (applied[ai] ? '✓ Validé et appliqué · ' : 'Valider et appliquer : ') + esc(actLabel(a)) + '</button>' });
+    (m.actions || []).forEach((a, ai) => {
+      h += '<div class="adv"><b>' + (applied[ai] ? '<span class="ok">✓ Modification appliquée</span>' : '<span class="wn">Proposition en attente de votre accord</span>') + '</b><div class="m" style="margin:5px 0">' + esc(actLabel(a)) + '</div>' +
+        (applied[ai] ? '' : '<button class="b" style="margin:4px 0 0" onclick="applyAct(' + mi + ',' + ai + ')">Valider et appliquer</button>') + '</div>';
+    });
   });
   if (chatBusy) h += '<div class="msg a m">Le coach réfléchit…</div>';
-  h += '<div style="display:flex;gap:8px;margin-top:8px"><input id="cin" style="margin:0" placeholder="' + (cfg.aiEndpoint ? 'Ex : je pars 4 jours en déplacement' : 'Configurer le coach dans Réglages') + '" onkeydown="if(event.key===\'Enter\')sendCoach()"><button class="b" style="width:auto;margin:0" onclick="sendCoach()">Envoyer</button></div>';
-  if (chat.length) h += '<div style="text-align:right"><button class="b alt" style="width:auto;margin:8px 0 0;padding:6px 12px;font-size:13px" onclick="clearChat()">Effacer la conversation</button></div>';
-  return h + '</div>';
+  h += '</div><div class="coach-compose"><input id="cin" placeholder="Écrivez au coach MENDI…" onkeydown="if(event.key===\'Enter\')sendCoach()"><button class="b" onclick="sendCoach()" aria-label="Envoyer"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg></button></div></div>';
+  h += feelCard();
+  h += '<details class="card"><summary><b>Historique des conversations (' + archivedChats.length + ')</b><span class="m"> · Afficher / masquer</span></summary><div style="margin-top:10px">';
+  if (!archivedChats.length) h += '<div class="m">Vos conversations archivées apparaîtront ici. Elles n’affectent jamais votre programme sportif.</div>';
+  archivedChats.slice().sort((a,b)=>(b.updated||0)-(a.updated||0)).forEach(c => {
+    const preview = (c.messages || []).find(m => m.r === 'u');
+    h += '<div class="archive-item"><div class="archive-title"><b>' + esc(c.title || 'Conversation') + '</b><div class="m">' + (c.updated ? new Date(c.updated).toLocaleDateString('fr-FR') : '') + ' · ' + (c.messages || []).length + ' messages</div><div class="m">' + esc(preview ? preview.t.slice(0,75) : 'Aucun message') + '</div></div><button class="b alt" onclick="restoreChat(\'' + esc(c.id) + '\')">Rouvrir</button><button class="b alt" onclick="deleteArchivedChat(\'' + esc(c.id) + '\')" aria-label="Supprimer">⌫</button></div>';
+  });
+  h += '</div></details>';
+  return h;
+}
+function quickCoach(text) { const input = $('#cin'); if (input) input.value = text; sendCoach(text); }
+function archiveOnly() {
+  if (!chat.length) return alert('Cette discussion est déjà vide.');
+  if (!confirm('Archiver cette discussion ? Elle restera disponible dans l’historique.')) return;
+  archiveCurrentChat(); activeChatId = 'mendi-' + Date.now() + '-' + Math.floor(Math.random()*10000); chat = [];
+  chatThreads.push({ id: activeChatId, title: 'Nouvelle discussion', updated: Date.now(), messages: [] });
+  save(KTH, chatThreads); save(KH, chat); save(KAC, activeChatId); paint();
 }
 
 /* ---------- Matériel & entretien ---------- */
@@ -1012,7 +1120,7 @@ function vPlan() {
     }).join('') +
     det('go_new', '<div style="padding-top:10px"><b class="ride">+ Ajouter une course ou un objectif</b></div>', '<div style="margin-top:10px">' + goalForm({ id: 'new', name: '', type: 'trail', date: '', runKm: '', rideKm: '', elev: '', prio: 'B', img: IMGS[goals.length % 3] }) + '</div>', false) + '</div>';
   h += absCard();
-  if (!plan || !plan.weeks.length) return h + '<div class="card"><button class="b" onclick="makePlan(true);paint()">Générer mon plan</button></div>' + coachCard();
+  if (!plan || !plan.weeks.length) return h + '<div class="card"><button class="b" onclick="makePlan(true);paint()">Générer mon plan</button></div>'; 
   h += '<div class="card"><h2>Volume de course par semaine (km)</h2>' + planChart() + '</div>';
   h += '<button class="b" onclick="makePlan(true);paint()">Adapter le plan à ma forme et à mes objectifs</button>';
   h += det('how', '<h2 style="margin:0">Comment le plan est calculé</h2>', '<ul class="m">' +
@@ -1036,7 +1144,7 @@ function vPlan() {
       asg.map(r => sessRow(r, r.done, w.t >= cur ? (r.iso ? (r.done ? 'Fait · ' : '') + dayLabel(r.iso) : 'À replacer (aucun jour disponible)') : r.d)).join('') + bikeRow(w, past || isCur ? bikeMinWeek(w.t) : undefined) + (past ? '' : strengthBlock(w)) + '</div>';
     return det('w' + w.t, sum, body, isCur, 'card');
   }).join('');
-  return h + coachCard();
+  return h;
 }
 function agg(list, g) {
   const l = list.filter(a => grp(a.type) === g);
@@ -1101,9 +1209,10 @@ function vCfg() {
 function paintStatus() { const s = $('#status'); if (s) s.textContent = acts.length ? acts.length + ' activités' + (cfg.last ? ' · synchro ' + new Date(cfg.last).toLocaleString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '') : 'Aucune donnée' }
 function paint() {
   document.querySelectorAll('nav button').forEach(b => b.classList.toggle('on', b.dataset.t === tab));
-  $('#view').innerHTML = tab === 'home' ? vHome() : tab === 'plan' ? vPlan() : tab === 'acts' ? vActs() : tab === 'gear' ? vGear() : vCfg();
+  $('#view').innerHTML = tab === 'home' ? vHome() : tab === 'plan' ? vPlan() : tab === 'coach' ? coachPage() : tab === 'acts' ? vActs() : tab === 'gear' ? vGear() : vCfg();
   paintStatus();
   if (tab === 'plan' && plan) { const sc = $('#psc'); if (sc) { const i = plan.weeks.findIndex(w => w.t >= curWeek()); sc.scrollLeft = Math.max(0, i * 18 - 80) } }
+  if (tab === 'coach') { const input = $('#cin'); if (input && chatBusy) input.blur(); }
 }
 function migrate() {
   if (!load('bt_mig3', false)) {
@@ -1119,7 +1228,7 @@ function migrate() {
   }
 }
 document.querySelectorAll('nav button').forEach(b => b.onclick = () => { tab = b.dataset.t; paint(); window.scrollTo && window.scrollTo(0, 0) });
-migrate(); syncGearsFromActs(); paint();
+migrate(); syncGearsFromActs(); persistChat(); paint();
 if (cfg.refresh && cfg.id && cfg.secret && (!cfg.last || Date.now() - cfg.last > 6 * 36e5)) sync();
 </script>
 </body>
