@@ -8,7 +8,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="MENDI Training">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<link rel="apple-touch-icon" sizes="180x180" href="icon-180.png?v=2">
+<link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon-v3.png">
 <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png?v=2">
 <link rel="icon" type="image/png" sizes="16x16" href="favicon-16.png?v=2">
 <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png?v=2">
@@ -110,6 +110,23 @@ ul{padding-left:20px;margin:6px 0}
 .imgs{display:flex;gap:8px;flex-wrap:wrap;margin:6px 0 10px;align-items:center}
 .th{width:64px;height:44px;border-radius:8px;background-size:cover;background-position:center;border:2px solid transparent;opacity:.65}
 .th.sel{border-color:var(--txt);opacity:1}
+
+/* Objectifs : cartes horizontales compactes */
+.goal-list{display:flex;gap:12px;overflow-x:auto;scroll-snap-type:x mandatory;margin:10px -16px 12px;padding:2px 16px 10px;-webkit-overflow-scrolling:touch;}
+.goal-card{flex:0 0 76%;max-width:300px;min-width:220px;scroll-snap-align:start;border:1px solid rgba(174,190,205,.16);border-radius:15px;overflow:hidden;background:#101419;}
+.goal-card>summary{list-style:none;cursor:pointer;}
+.goal-card>summary::-webkit-details-marker{display:none;}
+.goal-tile{height:142px;position:relative;background-size:cover;background-position:center;display:flex;flex-direction:column;justify-content:space-between;padding:12px;color:#fff;isolation:isolate;}
+.goal-tile:before{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(0,0,0,.34),rgba(0,0,0,.06) 35%,rgba(0,0,0,.82));z-index:-1;}
+.goal-tile-top,.goal-tile-bottom{display:flex;align-items:flex-start;justify-content:space-between;gap:8px;}
+.goal-tile-top{font-size:11px;font-weight:750;text-shadow:0 1px 4px #000;}
+.goal-tile-top .goal-prio{padding:4px 8px;border-radius:99px;background:rgba(0,0,0,.48);border:1px solid rgba(255,255,255,.28);}
+.goal-tile-top .goal-count{padding:4px 8px;border-radius:99px;background:rgba(242,241,236,.92);color:#101419;text-shadow:none;}
+.goal-tile-bottom{display:block;}
+.goal-tile-bottom b{display:block;font-size:16px;line-height:1.15;margin-bottom:4px;text-shadow:0 1px 5px #000;}
+.goal-tile-bottom span{display:block;font-size:11px;color:rgba(255,255,255,.88);text-shadow:0 1px 4px #000;}
+.goal-card[open]{flex-basis:88%;max-width:360px;}
+@media(min-width:700px){.goal-card{flex-basis:260px;}}
 .chip{display:inline-block;font-size:11px;font-weight:700;padding:1px 8px;border-radius:99px;border:1px solid var(--line)}
 .gb{height:10px}
 
@@ -1352,11 +1369,15 @@ function vPlan() {
   const cur = curWeek();
   let h = '';
   h += '<div class="card"><h2>Mes objectifs</h2>' +
-    goals.slice().sort((a, b) => (a.date || '').localeCompare(b.date || '')).map(g => {
+    (goals.length ? '<div class="goal-list">' + goals.slice().sort((a, b) => (a.date || '').localeCompare(b.date || '')).map(g => {
       const d = g.date ? Math.ceil((gT(g) - Date.now()) / DAY) : null;
-      return det('go_' + g.id, '<div class="row" style="border:0;padding:8px 0 0"><div style="display:flex;gap:10px;align-items:center"><div class="th sel" style="flex:none;border-color:transparent;opacity:1;background-image:url(\'' + imgSrc(g) + '\')"></div><div><b>' + esc(g.name) + '</b><div class="m">' + ({ A: 'Principal', B: 'Importante', C: 'Entraînement' }[prioOf(g)]) + ' · ' + (g.date ? fmtD(g.date) : 'date manquante') + (g.confirmed === false ? ' · <span class="ko">⚠ date à confirmer</span>' : '') + '</div></div></div><div class="r">' + (d !== null ? (d >= 0 ? 'J-' + d : 'passé') : '') + '</div></div>', '<div style="margin-top:10px">' + goalForm(g) + '</div>', false);
-    }).join('') +
-    det('go_new', '<div style="padding-top:10px"><b class="ride">+ Ajouter une course ou un objectif</b></div>', '<div style="margin-top:10px">' + goalForm({ id: 'new', name: '', type: 'trail', date: '', runKm: '', rideKm: '', elev: '', prio: 'B', img: IMGS[goals.length % 3] }) + '</div>', false) + '</div>';
+      const priority = ({ A: 'Principal', B: 'Importante', C: 'Entraînement' }[prioOf(g)]);
+      const count = d !== null ? (d >= 0 ? 'J-' + d : 'Passé') : 'Date à définir';
+      const meta = (g.date ? fmtD(g.date) : 'Date manquante') + (g.confirmed === false ? ' · Date à confirmer' : '');
+      const summary = '<div class="goal-tile" style="background-image:url(\'' + imgSrc(g) + '\')"><div class="goal-tile-top"><span class="goal-prio">' + priority + '</span><span class="goal-count">' + count + '</span></div><div class="goal-tile-bottom"><b>' + esc(g.name) + '</b><span>' + meta + '</span></div></div>';
+      return det('go_' + g.id, summary, '<div style="margin-top:10px">' + goalForm(g) + '</div>', false, 'goal-card');
+    }).join('') + '</div>' : '<p class="m">Aucun objectif enregistré pour le moment.</p>') +
+    det('go_new', '<div style="padding-top:10px"><b class="ride">＋ Ajouter une course ou un objectif</b></div>', '<div style="margin-top:10px">' + goalForm({ id: 'new', name: '', type: 'trail', date: '', runKm: '', rideKm: '', elev: '', prio: 'B', img: IMGS[goals.length % 3] }) + '</div>', false) + '</div>';
   h += absCard();
   if (!plan || !plan.weeks.length) return h + '<div class="card"><button class="b" onclick="makePlan(true);paint()">Générer mon plan</button></div>'; 
   if (plan.source === 'coach') h += '<div class="adv"><b class="ok">Programme piloté par le coach IA</b><div class="m">' + esc(plan.summary || 'Version validée') + '</div><button class="b alt" onclick="tab=\'coach\';paint()">Discuter avec le coach</button></div>' + (plan.phases && plan.phases.length ? '<div class="card"><h2>Phases de préparation</h2>' + plan.phases.map(ph => '<div class="sess"><b>' + esc(ph.name || ph.title || '') + '</b><div class="m">' + esc(ph.description || '') + '</div></div>').join('') + '</div>' : '');
