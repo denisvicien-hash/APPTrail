@@ -291,9 +291,20 @@ function log(m) {
 const prioOf = g => g.prio || 'A';
 const imgSrc = g => g.imgData || g.img || 'trail1.jpg';
 
-/* vélotaf : trajet marqué dans Strava, ou sortie vélo courte (hors gravel/VTT) */
-const isCommute = a => grp(a.type) === 'ride' && (a.commute || (!/Gravel|Mountain|Virtual/i.test(a.type) && a.dist / 1000 <= (prof.commuteKm || 36)));
+/* Vélotaf : trajet individuel de 14 à 19 km en semaine, hors VAE.
+   Deux activités par jour sont habituelles, mais un trajet isolé reste possible.
+   La date Strava est locale : ne pas la convertir en UTC pour le jour de semaine. */
 const isEbike = a => /^(e-?bike|e-?mountainbike|electricbike|ebikeride)$/i.test(String(a.type||'').replace(/\s/g,'')) || /vélo électrique|\bvae\b/i.test(String(a.type||''));
+const isCommute = a => {
+  if (grp(a.type) !== 'ride' || isEbike(a)) return false;
+  if (/Gravel|Mountain|Virtual/i.test(String(a.type || ''))) return false;
+  const km = Number(a.dist) / 1000;
+  if (!Number.isFinite(km) || km < 14 || km > 19) return false;
+  const localDate = String(a.date || '').slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(localDate)) return false;
+  const weekday = new Date(localDate + 'T12:00:00Z').getUTCDay();
+  return weekday >= 1 && weekday <= 5;
+};
 const outing = a => grp(a.type) === 'ride' && !isCommute(a) && a.time >= 2700;
 const weekRuns = t => acts.filter(a => grp(a.type) === 'run' && weekStart(a.date) === t).sort((a, b) => a.date.localeCompare(b.date));
 const runKmWeek = t => weekRuns(t).reduce((s, a) => s + a.dist, 0) / 1000;
@@ -631,7 +642,7 @@ function demo() {
       const t = mon + d * DAY + 7 * 36e5; if (t > now) return;
       const date = new Date(t).toISOString();
       if (g === 'run') { const dist = 8000 + Math.random() * 12000; list.push({ id: 'demo' + (k++), name: 'Sortie trail', type: 'TrailRun', date, dist, time: dist / 2.6, elev: dist * 0.04, hr: 140 + Math.random() * 20, hrmax: null, commute: false, gear: 'g9001' }) }
-      else if (g === 'com') list.push({ id: 'demo' + (k++), name: 'Vélotaf', type: 'Ride', date, dist: 32000, time: 5400, elev: 150, hr: null, hrmax: null, commute: true, gear: (w + d) % 2 ? 'b9001' : 'b9002' });
+      else if (g === 'com') { for (let leg=0;leg<2;leg++) list.push({ id: 'demo' + (k++), name: leg ? 'Vélotaf retour' : 'Vélotaf aller', type: 'Ride', date: date.slice(0,10) + (leg ? 'T18:00:00' : 'T08:00:00'), dist: 16000, time: 2700, elev: 75, hr: null, hrmax: null, commute: true, gear: (w + d) % 2 ? 'b9001' : 'b9002' }); }
       else { const dist = 40000 + Math.random() * 50000; list.push({ id: 'demo' + (k++), name: 'Sortie gravel', type: 'GravelRide', date, dist, time: dist / 7.5, elev: dist * 0.012, hr: null, hrmax: null, commute: false, gear: 'b9003' }) }
     });
   }
@@ -939,7 +950,7 @@ function delGoal(i) {
   goals = goals.filter(g => g.id !== i); save(KG, goals); makePlan(true); paint();
 }
 function saveProf() {
-  prof = { ...prof, vol: +$('#pvol').value || null, long: +$('#plong').value || null, commuteKm: +$('#pcom').value || null }; save(KF, prof);
+  prof = { ...prof, vol: +$('#pvol').value || null, long: +$('#plong').value || null }; save(KF, prof);
   makePlan(true); log('Réglages du plan enregistrés, plan recalculé.'); paint();
 }
 function absForm(a) {
@@ -1006,7 +1017,7 @@ function coachContext() {
   L.push(physioText());
   L.push('Objectif complémentaire : intégrer du renforcement progressif 1 à 2 fois par semaine pour mieux tolérer les descentes de trail (quadriceps en excentrique, fessiers, mollets, gainage), sans placer de séance dure avant la sortie longue ni pendant l’affûtage/récupération.');
   L.push('Vélotaf classique : il compte dans la fatigue et la récupération, même sans être une séance structurée. VAE exclus des estimations de charge.');
-  L.push('Vélotaf (km et minutes par semaine, 4 dernières semaines complètes) : ' + [4,3,2,1].map(i => { const w=cur-i*WK, l=acts.filter(a => isCommute(a) && !isEbike(a) && weekStart(a.date)===w); return (l.reduce((n,a)=>n+(+a.dist||0),0)/1000).toFixed(0)+' km / '+Math.round(l.reduce((n,a)=>n+(+a.time||0),0)/60)+' min'; }).join(' ; ') + '.');
+  L.push('Vélotaf (trajets individuels de 14 à 19 km en semaine, hors VAE ; km et minutes par semaine, 4 dernières semaines complètes) : ' + [4,3,2,1].map(i => { const w=cur-i*WK, l=acts.filter(a => isCommute(a) && !isEbike(a) && weekStart(a.date)===w); return (l.reduce((n,a)=>n+(+a.dist||0),0)/1000).toFixed(0)+' km / '+Math.round(l.reduce((n,a)=>n+(+a.time||0),0)/60)+' min'; }).join(' ; ') + '.');
   L.push('Vélo hors vélotaf (minutes) sur les 4 dernières semaines : ' + [4, 3, 2, 1].map(i => Math.round(bikeMinWeek(cur - i * WK))).join(', ') + '.');
   if (plan) plan.weeks.filter(w => w.t >= cur).slice(0, 8).forEach(w => { const runs = assignDays(w).filter(r => r.iso && r.iso >= todayIso()).map(r => r.iso + ' ' + r.t + ' ' + (r.race ? r.txt : r.km + ' km') + (r.done ? ' (fait)' : '')); const other = (Array.isArray(w.coachSessions) ? w.coachSessions : []).filter(x => x.date >= todayIso()).map(x => x.date + ' ' + x.title + ' (' + x.sport + ')' + (x.durationMin ? ' ' + x.durationMin + ' min' : '') + (x.distanceKm ? ' ' + x.distanceKm + ' km' : '')); L.push('Semaine du ' + isoOf(w.t) + ' : ' + w.phase + ', ' + w.vol + ' km. Séances : ' + runs.concat(other).join(' | ')); });
   const fo = offs.filter(d => d >= todayIso()); if (fo.length) L.push('Jours off déjà posés : ' + fo.join(', ') + '.');
@@ -1044,7 +1055,7 @@ function coachProgramData() {
   return {
     today: todayIso(),
     athlete: {
-      profile: { weeklyRunKm: startStats().vol, longestRunKm: startStats().long, weeklyBikeMinutes: startStats().bike, commuteKm: +prof.commuteKm || 36 },
+      profile: { weeklyRunKm: startStats().vol, longestRunKm: startStats().long, weeklyBikeMinutes: startStats().bike, commuteKm: 32 },
       weeklyHistory,
       physiology: physio(),
       recentActivities: acts
@@ -1610,7 +1621,7 @@ function vPlan() {
     '<li>Absences : volume réduit selon le pourcentage choisi, reprise progressive ensuite.</li>' +
     '<li>3 sorties à pied par semaine : une séance de qualité, un footing, une sortie longue, placées sur les jours non marqués OFF.</li>' +
     '<li>Renforcement : 2 séances progressives en période de construction, ciblant quadriceps (travail excentrique), fessiers, mollets et gainage ; une seule séance légère en récupération/affûtage, aucune séance de force en semaine de course.</li>' +
-    '<li>Vélotaf : trajets marqués « trajet » dans Strava, ou sorties vélo de moins de ' + (prof.commuteKm || 36) + ' km (réglable). Ils comptent comme base et ne sont pas planifiés.</li>' +
+    '<li>Vélotaf : sorties de 14 à 19 km du lundi au vendredi, hors VAE, normalement deux trajets par jour. Un trajet isolé compte aussi. Ils comptent comme base et ne sont pas planifiés.</li>' +
     '<li>Ressenti : une fatigue répétée ou une douleur propose d’alléger la semaine ; le coach IA peut ajuster le plan avec votre validation.</li>' +
     '<li>C’est une base générique, pas un avis médical : écoutez votre corps.</li></ul>', false, 'card');
   const list = plan.weeks.filter(w => w.t >= cur - 2 * WK);
@@ -1725,7 +1736,7 @@ function vProgress(){
   html+='<div class="card"><h2>Vélo total · km / semaine</h2>'+progChart(rows,'rideKm','var(--ride)','km de vélo')+
     '<div class="prog-grid">'+kpi('Dont vélotaf',sum(past,'commuteKm').toFixed(0)+' km',fmtH(sum(past,'commuteSec'))+' de trajet')+
     kpi('Autres sorties vélo',sum(past,'leisureKm').toFixed(0)+' km',fmtH(sum(past,'leisureSec'))+' de vélo')+'</div>'+
-    '<p class="prog-note">Les trajets vélotaf classiques sont comptabilisés dans le volume et le temps d’activité. Les VAE restent exclus. La classification vélotaf utilise les règles déjà présentes dans MENDI.</p></div>';
+    '<p class="prog-note">Les trajets vélotaf classiques sont comptabilisés dans le volume et le temps d’activité. Les VAE restent exclus. Vélotaf identifié par trajet de 14 à 19 km en semaine, hors VAE ; un aller ou un retour isolé reste compté.</p></div>';
   html+='<div class="card"><h2>Allure à fréquence cardiaque comparable</h2>';
   if(matched.ok){const d=matched.recent-matched.old;
     html+='<div class="prog-grid">'+kpi('Première période',progPace(matched.old),matched.n1+' sorties')+kpi('Période récente',progPace(matched.recent),matched.n2+' sorties')+'</div>';
@@ -1773,7 +1784,7 @@ function vCfg() {
     '<div class="card"><h2>Réglages du plan</h2><small>Estimés à partir de vos activités. Saisissez une valeur pour la forcer.</small>' +
     '<label>Volume de course (km par semaine), estimé : ' + au.vol + '</label><input id="pvol" type="number" inputmode="decimal" placeholder="' + au.vol + '" value="' + (prof.vol || '') + '">' +
     '<label>Plus longue sortie à pied (km), estimée : ' + au.long + '</label><input id="plong" type="number" inputmode="decimal" placeholder="' + au.long + '" value="' + (prof.long || '') + '">' +
-    '<label>Distance maximale d’un vélotaf (km, par défaut 36)</label><input id="pcom" type="number" inputmode="decimal" placeholder="36" value="' + (prof.commuteKm || '') + '">' +
+    '<small>Vélotaf : sorties de 14 à 19 km du lundi au vendredi, hors VAE. Chaque trajet est compté séparément.</small>' +
     '<button class="b alt" onclick="saveProf()">Enregistrer et recalculer le plan</button></div>' +
     det('c4', '<h2 style="margin:0">Données détaillées pour le coach</h2>',
     '<div style="margin-top:10px"><div class="m" style="margin-bottom:8px">Récupère pour chaque sortie la courbe de fréquence cardiaque, l’allure et l’altitude, puis calcule sur l’appareil : zones FC, charge, dérive cardiaque, montées/descentes, meilleurs efforts. Le coach reçoit un résumé compact, pas les milliers de points bruts.</div>' +
