@@ -288,8 +288,13 @@ const commuteWeek = t => { const l = acts.filter(a => isCommute(a) && weekStart(
 
 function norm(a) {
   return { id: a.id, name: a.name, type: a.sport_type || a.type, date: a.start_date_local || a.start_date,
-    dist: a.distance || 0, time: a.moving_time || 0, elev: a.total_elevation_gain || 0,
-    hr: a.average_heartrate || null, hrmax: a.max_heartrate || null, commute: !!a.commute, gear: a.gear_id || null };
+    dist: a.distance || 0, time: a.moving_time || 0, elapsed: a.elapsed_time || 0, elev: a.total_elevation_gain || 0,
+    hr: a.average_heartrate || null, hrmax: a.max_heartrate || null,
+    avgSpeed: a.average_speed || null, maxSpeed: a.max_speed || null,
+    cadence: a.average_cadence || null, watts: a.average_watts || null, maxWatts: a.max_watts || null,
+    weightedWatts: a.weighted_average_watts || null, calories: a.calories || null, temp: a.average_temp || null,
+    device: a.device_name || null, workoutType: a.workout_type ?? null,
+    commute: !!a.commute, gear: a.gear_id || null };
 }
 function merge(list, dropDemo) {
   const m = new Map(acts.filter(a => !(dropDemo && String(a.id).startsWith('demo'))).map(a => [String(a.id), a]));
@@ -414,13 +419,18 @@ async function importCSV(inp) {
     const rows = parseCSV(await f.text()); const H = rows[0].map(h => h.trim());
     const idx = n => H.lastIndexOf(n);
     const c = { id: idx('Activity ID'), date: idx('Activity Date'), name: idx('Activity Name'), type: idx('Activity Type'),
-      dist: idx('Distance'), time: idx('Moving Time'), elev: idx('Elevation Gain'), hr: idx('Average Heart Rate'), hrmax: idx('Max Heart Rate'), com: idx('Commute') };
+      dist: idx('Distance'), time: idx('Moving Time'), elapsed: idx('Elapsed Time'), elev: idx('Elevation Gain'),
+      hr: idx('Average Heart Rate'), hrmax: idx('Max Heart Rate'), avgSpeed: idx('Average Speed'), maxSpeed: idx('Max Speed'),
+      cadence: idx('Average Cadence'), watts: idx('Average Watts'), calories: idx('Calories'), com: idx('Commute') };
     if (c.id < 0 || c.date < 0 || c.type < 0) throw new Error('Colonnes inattendues. En-têtes lus : ' + H.slice(0, 8).join(' | '));
     const list = [];
     for (const r of rows.slice(1)) {
       if (!r[c.id]) continue; const d = parseDate(r[c.date]); if (!d) continue;
       const n = k => parseFloat(String(r[c[k]] || '').replace(',', '.')) || 0;
-      list.push({ id: r[c.id], name: r[c.name], type: r[c.type], date: d, dist: n('dist'), time: n('time'), elev: n('elev'), hr: n('hr') || null, hrmax: n('hrmax') || null,
+      const opt = k => c[k] >= 0 ? (n(k) || null) : null;
+      list.push({ id: r[c.id], name: r[c.name], type: r[c.type], date: d, dist: n('dist'), time: n('time'),
+        elapsed: opt('elapsed'), elev: n('elev'), hr: n('hr') || null, hrmax: n('hrmax') || null,
+        avgSpeed: opt('avgSpeed'), maxSpeed: opt('maxSpeed'), cadence: opt('cadence'), watts: opt('watts'), calories: opt('calories'),
         commute: c.com >= 0 && String(r[c.com]).toLowerCase() === 'true', gear: null });
     }
     merge(list, true); log(list.length + ' activités importées depuis le CSV (sans matériel : seule l’API Strava le fournit).'); paint();
@@ -791,7 +801,7 @@ function lighten(f) {
   if (feels[0]) { feels[0].f = null; save(KR, feels) }
   makePlan(true); paint();
 }
-const COACH_SYS = `Tu es le coach de course à pied (trail), de vélo et de renforcement de MENDI Training. Tu réponds en français, avec le vouvoiement, concrètement et brièvement (8 phrases maximum). Tu n'es pas médecin : en cas de douleur importante, inhabituelle, qui s'aggrave ou persiste, conseille de suspendre la séance concernée et de consulter un professionnel de santé. N'invente aucune donnée.
+const COACH_SYS = `Tu es le coach de course à pied (trail), de vélo et de renforcement de MENDI Training. Tu réponds en français, avec le vouvoiement, concrètement et brièvement (8 phrases maximum). Tu n'es pas médecin : en cas de douleur importante, inhabituelle, qui s'aggrave ou persiste, conseille de suspendre la séance concernée et de consulter un professionnel de santé. N'invente aucune donnée. Les données structurées peuvent contenir athlete.recentActivities : analyse-les pour commenter les séances réellement effectuées, leur régularité, les distances, durées, dénivelés, allures/vitesses, fréquence cardiaque, cadence et puissance lorsqu'elles existent. Distingue les activités de vélotaf (commute=true) des entraînements. Une donnée absente ne doit jamais être estimée ou inventée.
 Tu dois toujours répondre sous forme d'un objet JSON avec exactement trois propriétés : reply (texte destiné à l'athlète), actions (tableau d'actions ponctuelles) et programProposal (objet de programme complet ou null). Ne mets jamais de Markdown ni de bloc de code autour du JSON. Lorsqu’on te demande explicitement de proposer une modification du programme, tu dois examiner l’ensemble de la discussion et le planning fourni, puis produire au moins une action structurée pertinente si les informations disponibles le permettent. Une simple recommandation en texte ne remplace pas une action. Si aucune action autorisée ne convient ou si une donnée indispensable manque, explique précisément pourquoi et pose une question.
 Si l'utilisateur signale des courbatures, une fatigue ou une douleur qui rend la séance prévue inadaptée, propose spontanément une adaptation prudente du programme, même s'il ne dit pas littéralement « modifie mon plan ». Pour une simple question sans conséquence sur l'entraînement, ne déclenche pas d'action. Ne prétends jamais qu'une modification est déjà appliquée : toutes les actions attendent le clic de validation de l'utilisateur.
 Actions possibles :
@@ -849,6 +859,26 @@ function coachProgramData() {
     athlete: {
       profile: { weeklyRunKm: startStats().vol, longestRunKm: startStats().long, weeklyBikeMinutes: startStats().bike, commuteKm: +prof.commuteKm || 36 },
       weeklyHistory,
+      recentActivities: acts
+        .filter(a => a && a.date && !String(a.id).startsWith('demo'))
+        .slice()
+        .sort((a, b) => b.date.localeCompare(a.date))
+        .slice(0, 30)
+        .map(a => ({
+          date: a.date, sport: a.type || 'unknown', name: a.name || '',
+          distanceKm: +((+a.dist || 0) / 1000).toFixed(2),
+          movingTimeMin: +((+a.time || 0) / 60).toFixed(1),
+          elapsedTimeMin: a.elapsed ? +((+a.elapsed) / 60).toFixed(1) : undefined,
+          elevationGainM: Math.round(+a.elev || 0),
+          averageHeartRate: a.hr || undefined, maxHeartRate: a.hrmax || undefined,
+          averageSpeedKmh: a.avgSpeed ? +((+a.avgSpeed) * 3.6).toFixed(2) : undefined,
+          maxSpeedKmh: a.maxSpeed ? +((+a.maxSpeed) * 3.6).toFixed(2) : undefined,
+          averageCadence: a.cadence || undefined,
+          averagePowerW: a.watts || undefined, maxPowerW: a.maxWatts || undefined,
+          weightedAveragePowerW: a.weightedWatts || undefined,
+          calories: a.calories || undefined, averageTemperatureC: a.temp || undefined,
+          device: a.device || undefined, commute: !!a.commute
+        })),
       recentFeelings: feels.slice(0, 6).map(f => ({ date: f.date, energy: f.energy, pain: f.pain, note: f.note || '' }))
     },
     goals: goals.map(g => ({ id: g.id, name: g.name, type: g.type, date: g.date, runKm: +g.runKm || 0, rideKm: +g.rideKm || 0, elevation: +g.elev || 0, priority: prioOf(g) })),
