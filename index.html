@@ -199,6 +199,7 @@ nav button .nav-label{font-size:9px;letter-spacing:0}
 .exlib-card{border:1px solid var(--line);border-radius:14px;padding:15px;background:var(--card2)}
 .exlib-card h3{margin:0 0 6px}.exlib-card p{margin:8px 0}
 .exlib-card a{display:inline-flex;padding:11px 13px;border-radius:9px;background:var(--run);color:#fff;text-decoration:none;font-weight:700;margin-top:8px}
+.exlib-video{margin-top:12px}.exlib-video iframe{display:block;width:100%;aspect-ratio:16/9;border:0;border-radius:10px;background:#111}.exlib-secondary{display:inline-block!important;background:transparent!important;color:var(--run)!important;padding:8px 0!important;font-weight:500!important;font-size:12px}
 </style>
 </head>
 <body>
@@ -1913,16 +1914,27 @@ function vCfg() {
 }
 
 const EXLIB = [["Squat", "Jambes", "Débutant", "Pieds largeur des épaules, recule les hanches, fléchis les genoux puis remonte en poussant dans le sol.", "Garde les talons au sol et les genoux alignés avec les pieds.", "bodyweight squat"], ["Fente arrière", "Jambes", "Débutant", "Recule un pied, descends verticalement puis reviens debout. Alterne les jambes.", "Commence avec une faible amplitude et un appui si nécessaire.", "reverse lunge"], ["Pont fessier", "Hanches", "Débutant", "Allongé sur le dos, genoux pliés, pousse dans les talons pour lever le bassin.", "Ne cambre pas exagérément le bas du dos.", "glute bridge"], ["Montée sur marche", "Jambes", "Débutant", "Pose un pied sur une marche stable, monte sans élan puis redescends lentement.", "Choisis une marche basse et garde le genou stable.", "step up exercise"], ["Mollets debout", "Jambes", "Débutant", "Debout, monte lentement sur la pointe des pieds, puis redescends en contrôle.", "Évite de rebondir ; utilise un support pour l’équilibre.", "standing calf raise"], ["Gainage ventral", "Tronc", "Débutant", "Appui sur les avant-bras et les pointes de pieds, corps aligné.", "Respire normalement, évite de laisser tomber le bassin.", "forearm plank"], ["Gainage latéral", "Tronc", "Intermédiaire", "Sur un avant-bras, soulève le bassin en gardant le corps aligné.", "Version facile : genoux au sol.", "side plank"], ["Bird-dog", "Tronc", "Débutant", "À quatre pattes, tends lentement bras droit et jambe gauche puis alterne.", "Garde le bassin stable sans tourner le dos.", "bird dog exercise"], ["Dead bug", "Tronc", "Débutant", "Sur le dos, bras et jambes levés, éloigne lentement bras et jambe opposés.", "Garde les lombaires confortablement stables.", "dead bug exercise"], ["Pompes inclinées", "Haut du corps", "Débutant", "Mains sur un support stable, fléchis les coudes puis repousse.", "Plus le support est haut, plus l’exercice est accessible.", "incline push up"], ["Soulevé de terre unilatéral sans charge", "Hanches", "Intermédiaire", "En appui sur une jambe, bascule le buste vers l’avant en reculant l’autre jambe.", "Garde le dos neutre et commence près d’un mur.", "single leg romanian deadlift bodyweight"], ["Chaise contre un mur", "Jambes", "Débutant", "Dos au mur, descends en position assise partielle et tiens quelques secondes.", "Adapte l’angle des genoux à ton confort.", "wall sit exercise"]];
+const EXVIDEOS = {"Squat": "nEQQle9-0NA", "Fente arrière": "lKhZvT_NkOs", "Pont fessier": "SKOMwg1JLrU", "Gainage ventral": "xhk1JkbF2lg", "Gainage latéral": "ZpBJIRLGEgg", "Bird-dog": "ZdAHe9_HeEw", "Dead bug": "bxn9FBrt4-A", "Pompes inclinées": "0JUrOH--Kdk", "Soulevé de terre unilatéral sans charge": "6pEL3KxnlEo", "Chaise contre un mur": "XULOKw4E4P4"};
 let exlibFilter='Tous';
 function setExlibFilter(f){exlibFilter=f;paint()}
+function playExerciseVideo(i){
+  const e=EXLIB[i], id=e && EXVIDEOS[e[0]], el=document.getElementById('exvideo-'+i);
+  if(!id || !el)return;
+  document.querySelectorAll('.exlib-video iframe').forEach(f=>{if(f.parentElement!==el) f.parentElement.innerHTML='<button class="b alt" onclick="playExerciseVideo('+f.parentElement.id.slice(8)+')">▶ Lire la vidéo ici</button>'});
+  el.innerHTML='<iframe title="Démonstration : '+esc(e[0])+'" src="https://www.youtube-nocookie.com/embed/'+id+'?rel=0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen loading="lazy"></iframe>';
+}
 function vExercises(){
   const filters=['Tous','Jambes','Hanches','Tronc','Haut du corps'];
   const list=EXLIB.filter(e=>exlibFilter==='Tous'||e[1]===exlibFilter);
   return '<div class="card"><h2>Bibliothèque de renforcement</h2><p>Exercices simples utiles pour compléter la course et le vélo. Consulte la démonstration vidéo avant de commencer, puis privilégie une exécution lente et confortable.</p>'+
-    '<p class="m">Les boutons ouvrent une recherche vidéo ciblée sur YouTube : choisis une démonstration pédagogique, car les vidéos ne sont pas hébergées par MENDI.</p>'+
+    '<p class="m">Les vidéos disponibles se lisent directement dans MENDI. Appuie sur « Lire la vidéo » pour charger uniquement celle que tu veux voir. Deux exercices disposent encore d’un lien de recherche en attendant une démonstration vérifiée.</p>'+
     '<div class="exlib-filter">'+filters.map(f=>'<button class="'+(f===exlibFilter?'active':'')+'" onclick="setExlibFilter('+JSON.stringify(f).replace(/"/g,'&quot;')+')">'+esc(f)+'</button>').join('')+'</div>'+
     '<div class="exlib-list">'+list.map(e=>'<article class="exlib-card"><h3>'+esc(e[0])+'</h3><small>'+esc(e[1])+' · '+esc(e[2])+'</small><p>'+esc(e[3])+'</p><p class="m"><b>Point de vigilance :</b> '+esc(e[4])+'</p>'+
-    '<a target="_blank" rel="noopener noreferrer" href="https://www.youtube.com/results?search_query='+encodeURIComponent(e[5]+' exercise technique demonstration')+'">▶ Voir des vidéos de démonstration</a></article>').join('')+'</div>'+
+    (EXVIDEOS[e[0]] ?
+      '<div class="exlib-video" id="exvideo-'+EXLIB.indexOf(e)+'"><button class="b alt" onclick="playExerciseVideo('+EXLIB.indexOf(e)+')">▶ Lire la vidéo ici</button></div>'+
+      '<a class="exlib-secondary" target="_blank" rel="noopener noreferrer" href="https://www.youtube.com/watch?v='+EXVIDEOS[e[0]]+'">Ouvrir sur YouTube</a>'
+      : '<p class="m">Vidéo intégrée à venir pour cet exercice.</p><a target="_blank" rel="noopener noreferrer" href="https://www.youtube.com/results?search_query='+encodeURIComponent(e[5]+' exercise technique demonstration')+'">Rechercher une démonstration</a>')+
+    '</article>').join('')+'</div>'+
     '<p class="m" style="margin-top:15px">Commence par quelques répétitions maîtrisées. Arrête en cas de douleur inhabituelle. Pour un exercice prescrit par le coach mais absent de la bibliothèque, demande-lui une alternative ou une explication.</p>'+
     '<p class="m">Référence complémentaire : <a href="https://www.acefitness.org/resources/everyone/exercise-library/" target="_blank" rel="noopener noreferrer">Bibliothèque d’exercices ACE Fitness</a>.</p></div>';
 }
