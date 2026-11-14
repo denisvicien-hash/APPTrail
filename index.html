@@ -367,6 +367,7 @@ async function sync() {
     syncGearsFromActs(); save(KS, gears);
     cfg.last = Date.now(); save(KC, cfg);
     paint(); log(all.length + ' activités synchronisées.' + gmsg);
+    if (cfg.autoAna !== false) setTimeout(() => analyseAll(25), 400);
   } catch (e) { log(netHint(e)) }
   syncing = false; const b2 = $('#sy'); if (b2) b2.textContent = '↻';
 }
@@ -438,6 +439,174 @@ async function importCSV(inp) {
   inp.value = '';
 }
 
+/* ---------- Analyse détaillée Strava : courbes FC, zones, charge (pour le coach) ---------- */
+const KD = 'bt_detail', KZ = 'bt_zones';
+let detail = load(KD, {}), zonesCfg = load(KZ, null), anaBusy = false;
+const ZW = [0, 1, 2, 3.5, 5, 7];            // poids de charge par zone (Z1..Z5), façon TRIMP simplifié
+const ANA_DAYS = 150, CURVE_N = 48;
+const hrZones = () => {
+  if (Array.isArray(zonesCfg) && zonesCfg.length >= 4) return zonesCfg;
+  const mx = hrMaxEst(), c = [0, .6, .7, .8, .9];
+  return c.map((p, i) => ({ min: Math.round(mx * p), max: i < 4 ? Math.round(mx * c[i + 1]) : -1 }));
+};
+function hrMaxEst() {
+  const v = acts.filter(a => a.hrmax && a.date >= isoOf(Date.now() - 365 * DAY)).map(a => a.hrmax).sort((a, b) => a - b);
+  return v.length ? Math.round(v[Math.floor((v.length - 1) * 0.95)]) : 190;
+}
+function zoneOf(h) {
+  const z = hrZones();
+  for (let i = z.length - 1; i >= 0; i--) if (h >= z[i].min) return i + 1;
+  return 1;
+}
+function analyse(a, s) {
+  const g = k => s[k] && s[k].data, t = g('time'), hr = g('heartrate'), v = g('velocity_smooth'), alt = g('altitude'), d = g('distance'), w = g('watts');
+  if (!t || t.length < 30) return { none: 1 };
+  const n = t.length, run = grp(a.type) === 'run', out = { at: Date.now() };
+  const dt = i => i === 0 ? 0 : Math.min(t[i] - t[i - 1], 30);
+  const mv = i => !v || v[i] > 0.3;
+  if (hr) {
+    const zt = [0, 0, 0, 0, 0]; let load = 0, hs = 0, hn = 0;
+    for (let i = 1; i < n; i++) if (mv(i) && hr[i] > 30) { const z = zoneOf(hr[i]); zt[z - 1] += dt(i); load += dt(i) / 60 * ZW[z]; hs += hr[i] * dt(i); hn += dt(i) }
+    out.zonesMin = zt.map(x => +(x / 60).toFixed(1)); out.load = Math.round(load); if (hn) out.hrAvg = Math.round(hs / hn);
+    // dérive cardiaque : efficacité (vitesse/FC) 2e moitié vs 1re moitié, hors 10 premières minutes
+    if (v) {
+      const idx = []; let c = 0; for (let i = 1; i < n; i++) if (mv(i) && hr[i] > 30) { c += dt(i); if (c > 600) idx.push(i) }
+      if (idx.length > 300 && c > 2400) {
+        const h = Math.floor(idx.length / 2), eff = L => { let sv = 0, sh = 0; L.forEach(i => { sv += v[i]; sh += hr[i] }); return sv / sh };
+        out.cardiacDriftPct = +((eff(idx.slice(0, h)) / eff(idx.slice(h)) - 1) * 100).toFixed(1);
+      }
+    }
+  }
+  if (alt && d) {
+    const sm = alt.map((_, i) => { let s0 = 0, c0 = 0; for (let j = Math.max(0, i - 4); j <= Math.min(n - 1, i + 4); j++) { s0 += alt[j]; c0++ } return s0 / c0 });
+    let asc = 0, des = 0; for (let i = 1; i < n; i++) { const x = sm[i] - sm[i - 1]; if (x > 0) asc += x; else des -= x }
+    out.ascentM = Math.round(asc); out.descentM = Math.round(des);
+    const U = { s: 0, hs: 0, hn: 0, gain: 0, dist: 0 }, D = { s: 0, hs: 0, hn: 0, loss: 0, dist: 0 };
+    for (let i = 1; i < n; i++) {
+      const j = Math.min(n - 1, i + 8), dd = d[j] - d[i]; if (dd < 20 || !mv(i)) continue;
+      const gr = (sm[j] - sm[i]) / dd, x = dt(i), da = d[i] - d[i - 1], dh = sm[i] - sm[i - 1];
+      const B = gr > 0.05 ? U : gr < -0.05 ? D : null; if (!B) continue;
+      B.s += x; B.dist += da; if (hr && hr[i] > 30) { B.hs += hr[i] * x; B.hn += x }
+      if (B === U && dh > 0) U.gain += dh; if (B === D && dh < 0) D.loss -= dh;
+    }
+    if (U.s > 120) out.climb = { min: Math.round(U.s / 60), hr: U.hn ? Math.round(U.hs / U.hn) : undefined, vamMh: Math.round(U.gain / (U.s / 3600)), kmh: +(U.dist / U.s * 3.6).toFixed(1) };
+    if (D.s > 120) out.descent = { min: Math.round(D.s / 60), hr: D.hn ? Math.round(D.hs / D.hn) : undefined, kmh: +(D.dist / D.s * 3.6).toFixed(1), lossM: Math.round(D.loss) };
+  }
+  if (d && run) {
+    const be = {}; [[1000, 'k1'], [5000, 'k5'], [10000, 'k10'], [21097, 'k21']].forEach(([L, key]) => {
+      let best = 1e9, j = 0; for (let i = 0; i < n; i++) { while (j < n - 1 && d[j] - d[i] < L) j++; if (d[j] - d[i] >= L) best = Math.min(best, t[j] - t[i]) }
+      if (best < 1e9) be[key] = Math.round(best);
+    }); if (Object.keys(be).length) out.best = be;
+  }
+  if (w && w.length === n) {
+    const pre = [0]; for (let i = 0; i < n; i++) pre.push(pre[i] + (w[i] || 0));
+    const pw = {}; [[300, 'm5'], [1200, 'm20']].forEach(([W, key]) => {
+      let best = 0, j = 0; for (let i = 0; i < n; i++) { while (j < n - 1 && t[j] - t[i] < W) j++; if (t[j] - t[i] >= W) best = Math.max(best, (pre[j + 1] - pre[i]) / (j - i + 1)) }
+      if (best) pw[key] = Math.round(best);
+    }); if (Object.keys(pw).length) out.power = pw;
+  }
+  // courbe : CURVE_N segments de distance égale (FC moyenne, vitesse, altitude de fin)
+  if (d && d[n - 1] > 1500 && (hr || alt)) {
+    const tot = d[n - 1], cv = { hr: [], spd: [], alt: [] }; let i0 = 0;
+    for (let k = 1; k <= CURVE_N; k++) {
+      let i1 = i0; while (i1 < n - 1 && d[i1] < tot * k / CURVE_N) i1++;
+      let hs = 0, hc = 0; if (hr) for (let i = i0; i <= i1; i++) if (hr[i] > 30) { hs += hr[i]; hc++ }
+      const sec = t[i1] - t[i0];
+      cv.hr.push(hc ? Math.round(hs / hc) : 0); cv.spd.push(sec > 0 ? +((d[i1] - d[i0]) / sec * 3.6).toFixed(1) : 0); cv.alt.push(alt ? Math.round(alt[i1]) : 0);
+      i0 = i1;
+    }
+    out.curve = cv; out.curveKm = +(tot / 1000).toFixed(1);
+  }
+  return out;
+}
+const eligible = a => a && a.date && !String(a.id).startsWith('demo') && ['run', 'ride'].includes(grp(a.type)) && a.dist >= 2000 &&
+  a.date >= new Date(Date.now() - ANA_DAYS * DAY).toISOString() && !(isCommute(a) && !a.hr);
+const anaCount = () => { const e = acts.filter(eligible); return { done: e.filter(a => detail[a.id]).length, total: e.length } };
+function anaStat(m) { const e = $('#anaStat'); if (e) e.textContent = m || (() => { const c = anaCount(); return c.done + ' / ' + c.total + ' sorties analysées (' + ANA_DAYS + ' derniers jours)' })() }
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+async function analyseAll(max) {
+  if (anaBusy) return;
+  if (!cfg.id || !cfg.secret || !cfg.refresh) return log('Connectez Strava avant d’analyser les sorties.');
+  anaBusy = true; let done = 0, msg = '';
+  try {
+    const j = await tokenCall({ grant_type: 'refresh_token', refresh_token: cfg.refresh });
+    cfg.refresh = j.refresh_token; save(KC, cfg);
+    const H = { Authorization: 'Bearer ' + j.access_token };
+    try {
+      const r = await fetch('https://www.strava.com/api/v3/athlete/zones', { headers: H });
+      if (r.ok) { const z = await r.json(), zz = z && z.heart_rate && z.heart_rate.zones; if (zz && zz.length >= 4) { zonesCfg = zz; save(KZ, zz) } }
+    } catch (e) { }
+    const todo = acts.filter(a => eligible(a) && !detail[a.id]).slice(0, max || 40);
+    for (const a of todo) {
+      anaStat('Analyse ' + (done + 1) + ' / ' + todo.length + '…');
+      const r = await fetch('https://www.strava.com/api/v3/activities/' + a.id + '/streams?keys=time,heartrate,velocity_smooth,altitude,distance,watts&key_by_type=true', { headers: H });
+      if (r.status === 429) { msg = ' Limite Strava atteinte : réessayez dans 15 minutes.'; break }
+      if (r.status === 404) detail[a.id] = { none: 1 };
+      else if (!r.ok) throw new Error('Strava streams : HTTP ' + r.status);
+      else detail[a.id] = analyse(a, await r.json());
+      done++; if (done % 5 === 0) save(KD, detail);
+      const use = (r.headers.get('X-RateLimit-Usage') || '').split(',').map(Number);
+      if (use[0] >= 90) { msg = ' Pause pour respecter la limite Strava : relancez dans 15 minutes.'; break }
+      await sleep(250);
+    }
+    save(KD, detail); log(done + ' sortie(s) analysée(s).' + msg + ' Le coach utilisera ces données à la prochaine question.');
+  } catch (e) { save(KD, detail); log(netHint(e)) }
+  anaBusy = false; anaStat();
+}
+function showSent() {
+  const body = JSON.stringify({ context: coachContext(), program: coachProgramData() }), e = $('#anaPrev');
+  if (e) e.innerHTML = '<div class="m" style="margin:8px 0"><b>≈ ' + Math.round(body.length / 1024) + ' Ko par message (≈ ' + Math.round(body.length / 3.5 / 1000) + ' k jetons en entrée).</b> Aperçu des données physiologiques :</div><pre style="white-space:pre-wrap;font-size:11px;max-height:260px;overflow:auto">' + esc(JSON.stringify(physio(), null, 1)) + '</pre>';
+}
+function resetAna() { if (!confirm('Effacer les analyses détaillées et les relancer ?')) return; detail = {}; save(KD, detail); anaStat() }
+function loadOf(a) {
+  const d = detail[a.id]; if (d && d.load != null) return d.load;
+  const m = a.time / 60; if (a.hr) return Math.round(m * ZW[zoneOf(a.hr)]);
+  return Math.round(m * (grp(a.type) === 'run' ? 2 : isCommute(a) ? 1 : 1.5));
+}
+function physio() {
+  const cur = curWeek(), z = hrZones(), tz = todayIso();
+  const daily = {}; acts.filter(a => a.date && !String(a.id).startsWith('demo')).forEach(a => { const k = a.date.slice(0, 10); daily[k] = (daily[k] || 0) + loadOf(a) });
+  let ctl = 0, atl = 0; const start = Date.now() - 220 * DAY;
+  for (let t = start; t <= Date.now(); t += DAY) { const l = daily[isoOf(t)] || 0; ctl += (l - ctl) / 42; atl += (l - atl) / 7 }
+  const weeklyLoad = []; for (let i = 12; i >= 1; i--) { const t = cur - i * WK; weeklyLoad.push({ weekStart: isoOf(t), load: acts.filter(a => !String(a.id).startsWith('demo') && weekStart(a.date) === t).reduce((s, a) => s + loadOf(a), 0) }) }
+  const an28 = acts.filter(a => detail[a.id] && detail[a.id].zonesMin && a.date >= isoOf(Date.now() - 28 * DAY));
+  const zs = [0, 0, 0, 0, 0]; an28.forEach(a => detail[a.id].zonesMin.forEach((m, i) => zs[i] += m)); const tot = zs.reduce((s, x) => s + x, 0);
+  const best = {}; acts.filter(a => detail[a.id] && detail[a.id].best && a.date >= isoOf(Date.now() - 120 * DAY)).forEach(a => Object.entries(detail[a.id].best).forEach(([k, s]) => { if (!best[k] || s < best[k].sec) best[k] = { sec: s, date: a.date.slice(0, 10) } }));
+  let vdot; ['k5', 'k10'].forEach(k => { if (!best[k]) return; const dist = k === 'k5' ? 5000 : 10000, tm = best[k].sec / 60, vv = dist / tm;
+    const x = (-4.6 + 0.182258 * vv + 0.000104 * vv * vv) / (0.8 + 0.1894393 * Math.exp(-0.012778 * tm) + 0.2989558 * Math.exp(-0.1932605 * tm)); if (!vdot || x > vdot) vdot = x });
+  const c = anaCount();
+  return {
+    hrZonesBpm: z.map((q, i) => 'Z' + (i + 1) + ': ' + q.min + (q.max > 0 ? '–' + q.max : '+')), hrZonesSource: Array.isArray(zonesCfg) ? 'Strava' : 'estimées (pourcentages de la FC max observée)',
+    hrMaxEstimateBpm: hrMaxEst(),
+    load: { note: 'points de charge = minutes pondérées par zone (Z1×1, Z2×2, Z3×3,5, Z4×5, Z5×7) ; estimée sans FC (course ×2/min, vélotaf ×1, vélo ×1,5)', atl7d: Math.round(atl), ctl42d: Math.round(ctl), acwr: ctl > 5 ? +(atl / ctl).toFixed(2) : null, form: Math.round(ctl - atl), weeklyLoad },
+    zoneDistribution28d: tot ? { minutes: zs.map(x => Math.round(x)), pct: zs.map(x => Math.round(x / tot * 100)), activities: an28.length } : null,
+    bestEfforts: Object.keys(best).length ? Object.fromEntries(Object.entries(best).map(([k, o]) => [k, { sec: o.sec, date: o.date }])) : null,
+    estimatedVdotFromTraining: vdot ? +vdot.toFixed(1) : null,
+    coverage: c.done + ' sorties analysées sur ' + c.total + ' éligibles'
+  };
+}
+const thin = (arr, n) => { if (!arr || arr.length <= n) return arr; const o = [], k = arr.length / n; for (let i = 0; i < n; i++) { const s = arr.slice(Math.round(i * k), Math.round((i + 1) * k)); o.push(+(s.reduce((x, y) => x + y, 0) / s.length).toFixed(1)) } return o };
+const COACH_DETAIL = { light: { n: 0, cnt: 0 }, std: { n: 24, cnt: 8 }, full: { n: 48, cnt: 15 } };
+function coachAnalysis(a, rank) {
+  const d = detail[a.id]; if (!d || d.none) return undefined;
+  const m = COACH_DETAIL[cfg.coachDetail] || COACH_DETAIL.std, o = {};
+  ['zonesMin', 'load', 'hrAvg', 'cardiacDriftPct', 'ascentM', 'descentM', 'climb', 'descent', 'best', 'power'].forEach(k => { if (d[k] !== undefined) o[k] = d[k] });
+  if (d.curve && m.n && rank < m.cnt) o.curve = { km: d.curveKm, points: m.n, hr: thin(d.curve.hr, m.n).map(Math.round), speedKmh: thin(d.curve.spd, m.n), altitudeM: thin(d.curve.alt, m.n).map(Math.round) };
+  return o;
+}
+function physioText() {
+  const p = physio(), L = [];
+  L.push('Zones FC (' + p.hrZonesSource + ') : ' + p.hrZonesBpm.join(' | ') + '. FC max estimée ' + p.hrMaxEstimateBpm + '.');
+  L.push('Charge : fatigue 7 j ' + p.load.atl7d + ', forme 42 j ' + p.load.ctl42d + (p.load.acwr ? ', ratio aigu/chronique ' + p.load.acwr : '') + ' (charge hebdo : ' + p.load.weeklyLoad.slice(-6).map(w => w.load).join(', ') + ').');
+  if (p.zoneDistribution28d) L.push('Répartition du temps par zone sur 28 j (Z1→Z5, %) : ' + p.zoneDistribution28d.pct.join(' / ') + '.');
+  if (p.estimatedVdotFromTraining) L.push('VDOT estimé depuis les entraînements : ' + p.estimatedVdotFromTraining + ' (sous-estime souvent le potentiel).');
+  L.push('Détail Strava : ' + p.coverage + '.');
+  return L.join('\n');
+}
+const COACH_DATA_SYS = `
+
+Données physiologiques détaillées : athlete.physiology contient les zones de FC en bpm, la charge d'entraînement (atl7d = fatigue, ctl42d = forme, acwr = ratio aigu/chronique : au-dessus de 1,3 sois prudent, sous 0,8 la charge est faible, form = ctl - atl), la répartition du temps par zone sur 28 jours (en base, vise environ 80 % en Z1-Z2), les meilleurs efforts (secondes) et un VDOT estimé. Chaque élément de athlete.recentActivities peut avoir analysis : zonesMin (minutes en Z1..Z5), cardiacDriftPct (dérive cardiaque ; au-delà de 5 % sur une sortie facile, travaille l'endurance de base ou tiens compte de la chaleur et de la fatigue), ascentM/descentM, climb et descent (minutes, FC moyenne, VAM en m/h, vitesse), best et power (meilleurs efforts) et curve (FC, vitesse et altitude échantillonnées à distance égale, du départ à l'arrivée : repère la dérive, l'effondrement en fin de sortie et la gestion des descentes). Utilise ces chiffres pour calibrer les FC cibles, les allures, les volumes et la place du renforcement, et cite ceux dont tu te sers. Si une donnée est absente (analysis manquant, charge estimée faute de FC), dis-le au lieu de l'inventer. N'interprète pas ces données comme un avis médical.`;
+
 /* ---------- Démo, sauvegarde, reset ---------- */
 function demo() {
   const list = [], now = Date.now(); let k = 0;
@@ -458,7 +627,7 @@ function demo() {
   gears.filter(g => g.demo).forEach(g => g.km = Math.round(gearKm(g.id)));
   save(KS, gears); log('Données de démonstration chargées.'); paint();
 }
-const ALLK = [KC, KA, KG, KP, KF, KB, KO, KR, KM, KS, KH, KJ, KX, KTH, KAH, KAC];
+const ALLK = [KC, KA, KG, KP, KF, KB, KO, KR, KM, KS, KH, KJ, KX, KTH, KAH, KAC, KD, KZ];
 function exportData() {
   const d = { v: 4 }; ALLK.forEach(k => d[k] = JSON.parse(localStorage.getItem(k) || 'null'));
   const t = $('#xp'); t.value = JSON.stringify(d); t.focus(); t.select();
@@ -819,6 +988,7 @@ function coachContext() {
   L.push('Objectifs : ' + goals.map(g => g.name + ' le ' + g.date + ' (' + g.type + ', ' + g.runKm + ' km à pied, ' + g.rideKm + ' km à vélo, priorité ' + prioOf(g) + ')').join(' ; '));
   if (absences.length) L.push('Absences : ' + absences.map(a => a.name + ' du ' + a.start + ' au ' + a.end + ' (course ' + a.runPct + ' %, vélo ' + (a.bike ? 'oui' : 'non') + ')').join(' ; '));
   L.push('Course réalisée (km par semaine, de la plus ancienne à la dernière semaine complète) : ' + [4, 3, 2, 1].map(i => runKmWeek(cur - i * WK).toFixed(0)).join(', ') + '. Cette semaine : ' + runKmWeek(cur).toFixed(0) + ' km.');
+  L.push(physioText());
   L.push('Objectif complémentaire : intégrer du renforcement progressif 1 à 2 fois par semaine pour mieux tolérer les descentes de trail (quadriceps en excentrique, fessiers, mollets, gainage), sans placer de séance dure avant la sortie longue ni pendant l’affûtage/récupération.');
   L.push('Vélo hors vélotaf (minutes) sur les 4 dernières semaines : ' + [4, 3, 2, 1].map(i => Math.round(bikeMinWeek(cur - i * WK))).join(', ') + '.');
   if (plan) plan.weeks.filter(w => w.t >= cur).slice(0, 8).forEach(w => { const runs = assignDays(w).filter(r => r.iso && r.iso >= todayIso()).map(r => r.iso + ' ' + r.t + ' ' + (r.race ? r.txt : r.km + ' km') + (r.done ? ' (fait)' : '')); const other = (Array.isArray(w.coachSessions) ? w.coachSessions : []).filter(x => x.date >= todayIso()).map(x => x.date + ' ' + x.title + ' (' + x.sport + ')' + (x.durationMin ? ' ' + x.durationMin + ' min' : '') + (x.distanceKm ? ' ' + x.distanceKm + ' km' : '')); L.push('Semaine du ' + isoOf(w.t) + ' : ' + w.phase + ', ' + w.vol + ' km. Séances : ' + runs.concat(other).join(' | ')); });
@@ -859,12 +1029,14 @@ function coachProgramData() {
     athlete: {
       profile: { weeklyRunKm: startStats().vol, longestRunKm: startStats().long, weeklyBikeMinutes: startStats().bike, commuteKm: +prof.commuteKm || 36 },
       weeklyHistory,
+      physiology: physio(),
       recentActivities: acts
         .filter(a => a && a.date && !String(a.id).startsWith('demo'))
         .slice()
         .sort((a, b) => b.date.localeCompare(a.date))
         .slice(0, 30)
-        .map(a => ({
+        .map((a, rank) => ({
+          analysis: coachAnalysis(a, rank),
           date: a.date, sport: a.type || 'unknown', name: a.name || '',
           distanceKm: +((+a.dist || 0) / 1000).toFixed(2),
           movingTimeMin: +((+a.time || 0) / 60).toFixed(1),
@@ -1155,7 +1327,7 @@ async function sendCoach(text) {
     while (msgs.length && msgs[0].role !== 'user') msgs.shift();
     const r = await fetch(cfg.aiEndpoint, { method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ system: COACH_SYS, context: coachContext(), program: coachProgramData(), messages: msgs }) });
+      body: JSON.stringify({ system: COACH_SYS + COACH_DATA_SYS, context: coachContext(), program: coachProgramData(), messages: msgs }) });
     if (!r.ok) { const detail = (await r.text()).slice(0, 240); throw new Error('Relais OpenAI : HTTP ' + r.status + (detail ? ' · ' + detail : '')); }
     const j = await r.json();
     const p = parseCoach(j && (j.reply !== undefined || j.actions !== undefined) ? j : (j.text || ''));
@@ -1485,6 +1657,16 @@ function vCfg() {
     '<label>Plus longue sortie à pied (km), estimée : ' + au.long + '</label><input id="plong" type="number" inputmode="decimal" placeholder="' + au.long + '" value="' + (prof.long || '') + '">' +
     '<label>Distance maximale d’un vélotaf (km, par défaut 36)</label><input id="pcom" type="number" inputmode="decimal" placeholder="36" value="' + (prof.commuteKm || '') + '">' +
     '<button class="b alt" onclick="saveProf()">Enregistrer et recalculer le plan</button></div>' +
+    det('c4', '<h2 style="margin:0">Données détaillées pour le coach</h2>',
+    '<div style="margin-top:10px"><div class="m" style="margin-bottom:8px">Récupère pour chaque sortie la courbe de fréquence cardiaque, l’allure et l’altitude, puis calcule sur l’appareil : zones FC, charge, dérive cardiaque, montées/descentes, meilleurs efforts. Le coach reçoit un résumé compact, pas les milliers de points bruts.</div>' +
+    '<div id="anaStat" class="m"><b>' + (() => { const c = anaCount(); return c.done + ' / ' + c.total + ' sorties analysées (' + ANA_DAYS + ' derniers jours)' })() + '</b></div>' +
+    '<button class="b" onclick="analyseAll(40)">Analyser mes sorties</button>' +
+    '<label>Niveau de détail envoyé au coach</label><select onchange="cfg.coachDetail=this.value;save(KC,cfg)">' +
+    [['light', 'Léger : indicateurs seulement'], ['std', 'Standard : + courbes des 8 dernières sorties'], ['full', 'Détaillé : + courbes des 15 dernières sorties']].map(o => '<option value="' + o[0] + '"' + ((cfg.coachDetail || 'std') === o[0] ? ' selected' : '') + '>' + o[1] + '</option>').join('') + '</select>' +
+    '<label><input type="checkbox" style="width:auto;margin-right:8px"' + (cfg.autoAna !== false ? ' checked' : '') + ' onchange="cfg.autoAna=this.checked;save(KC,cfg)">Analyser automatiquement après chaque synchronisation</label>' +
+    '<button class="b alt" onclick="showSent()">Voir ce qui est envoyé au coach</button><div id="anaPrev"></div>' +
+    '<button class="b alt" onclick="resetAna()">Effacer et refaire les analyses</button>' +
+    '<small class="m">Si les zones FC Strava sont inaccessibles, elles sont estimées à partir de votre FC max. Si une analyse échoue, refaites l’autorisation Strava (accès activités complet).</small></div>', false, 'card') +
     det('c2', '<h2 style="margin:0">Coach IA OpenAI ' + (cfg.aiEndpoint ? '<span class="ok">● configuré</span>' : '') + '</h2>',
     '<div style="margin-top:10px"><div class="m" style="margin-bottom:8px">Le coach passe par un petit relais sécurisé hébergé séparément (Cloudflare Worker). La clé OpenAI reste côté serveur et n’est jamais enregistrée dans cette application. L’API OpenAI est facturée à l’usage, indépendamment de ChatGPT Plus/Free.</div>' +
     '<label>Adresse HTTPS du relais Cloudflare</label><input id="aiendpoint" type="url" placeholder="https://mendi-coach.votre-compte.workers.dev" value="' + esc(cfg.aiEndpoint || '') + '">' +
