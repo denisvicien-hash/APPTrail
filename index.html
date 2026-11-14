@@ -663,6 +663,45 @@ function exportData() {
   try { navigator.clipboard.writeText(t.value).catch(() => { }) } catch (e) { }
   log('Sauvegarde générée (copiée si le navigateur l’autorise). Elle contient vos clés : ne la partagez pas.');
 }
+function downloadBackup() {
+  try {
+    const d = { v: 4, exportedAt: new Date().toISOString(), app: 'MENDI Training' };
+    ALLK.forEach(k => d[k] = JSON.parse(localStorage.getItem(k) || 'null'));
+    const blob = new Blob([JSON.stringify(d, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'MENDI-sauvegarde-' + new Date().toISOString().slice(0, 10) + '.json';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+    log('Fichier de sauvegarde créé. Sur iPhone, enregistrez-le dans Fichiers ou iCloud Drive. Il contient des données personnelles et des identifiants de connexion : gardez-le privé.');
+  } catch (e) { log('Sauvegarde impossible : ' + e.message); }
+}
+function restoreBackupObject(d) {
+  if (!d || d.v !== 4 || typeof d !== 'object' || Array.isArray(d)) throw new Error('format de sauvegarde inconnu');
+  const keys = ALLK.filter(k => Object.prototype.hasOwnProperty.call(d, k));
+  if (!keys.length) throw new Error('aucune donnée MENDI reconnue');
+  if (!confirm('Restaurer cette sauvegarde ? Les données MENDI actuelles de cet appareil seront remplacées. Faites une sauvegarde de cet appareil avant de continuer.')) return;
+  // Restaurer toutes les clés reconnues, y compris les valeurs nulles.
+  ALLK.forEach(k => {
+    if (Object.prototype.hasOwnProperty.call(d, k) && d[k] !== null) localStorage.setItem(k, JSON.stringify(d[k]));
+    else localStorage.removeItem(k);
+  });
+  localStorage.setItem('bt_mig4', 'true');
+  location.reload();
+}
+async function restoreBackupFile(inp) {
+  const file = inp.files && inp.files[0];
+  if (!file) return;
+  try {
+    if (file.size > 25 * 1024 * 1024) throw new Error('fichier trop volumineux (maximum 25 Mo)');
+    const d = JSON.parse(await file.text());
+    restoreBackupObject(d);
+  } catch (e) { log('Restauration du fichier impossible : ' + e.message); }
+  finally { inp.value = ''; }
+}
 function importData() {
   try {
     const d = JSON.parse($('#xp').value); if (!d || d.v !== 4) throw new Error('format inconnu');
@@ -1842,8 +1881,13 @@ function vCfg() {
     '<label>Adresse HTTPS du relais Cloudflare</label><input id="aiendpoint" type="url" placeholder="https://mendi-coach.votre-compte.workers.dev" value="' + esc(cfg.aiEndpoint || '') + '">' +
     '<small class="m">Collez ici l’URL du Worker après son déploiement. Ne collez pas votre clé OpenAI dans ce champ.</small>' +
     '<button class="b" onclick="saveAI()">Enregistrer l’adresse</button></div>', false, 'card') +
-    det('c3', '<h2 style="margin:0">Sauvegarde et transfert</h2>', '<div style="margin-top:10px"><div class="m" style="margin-bottom:8px">Pour passer de Safari à l’app de l’écran d’accueil, ou vers un autre appareil : « Générer » ici, collez le texte dans l’autre appareil, puis « Restaurer ». Le texte contient vos clés : ne le partagez pas.</div>' +
-    '<textarea id="xp" rows="4" placeholder="Sauvegarde…"></textarea><button class="b alt" onclick="exportData()">Générer la sauvegarde</button><button class="b alt" onclick="importData()">Restaurer depuis le texte collé</button></div>', false, 'card') +
+    det('c3', '<h2 style="margin:0">Sauvegarde et transfert</h2>', '<div style="margin-top:10px"><div class="m" style="margin-bottom:8px">Pour transférer toutes vos données vers un Mac ou un autre iPhone : téléchargez un fichier de sauvegarde, transférez-le via AirDrop ou iCloud Drive, puis restaurez-le sur le nouvel appareil. Le fichier contient vos clés : ne le partagez pas.</div>' +
+    '<button class="b" onclick="downloadBackup()">Télécharger ma sauvegarde (.json)</button>' +
+    '<label for="backupFile" style="margin-top:14px">Restaurer une sauvegarde depuis un fichier</label>' +
+    '<input id="backupFile" type="file" accept=".json,application/json" onchange="restoreBackupFile(this)">' +
+    '<small class="m">Sur iPhone : enregistrez le fichier dans Fichiers / iCloud Drive, puis sélectionnez-le ici sur le Mac. La restauration remplace les données locales de cet appareil. Gardez ce fichier privé : il contient des informations personnelles et des jetons Strava.</small>' +
+    '<details style="margin-top:12px"><summary>Ancienne méthode : copier / coller du texte</summary>' +
+    '<textarea id="xp" rows="4" placeholder="Sauvegarde…"></textarea><button class="b alt" onclick="exportData()">Générer le texte</button><button class="b alt" onclick="importData()">Restaurer le texte</button></details></div>', false, 'card') +
     '<div class="card"><h2>Plan B : export Strava</h2><small>Archive Strava, fichier <b>activities.csv</b>.</small><input type="file" accept=".csv,text/csv" onchange="importCSV(this)"></div>' +
     '<div class="card"><h2>Autres</h2><button class="b alt" onclick="demo()">Charger des données de démo</button><button class="b alt" onclick="wipe()">Tout effacer</button></div>' +
     '<div class="card"><div id="log"></div></div>';
