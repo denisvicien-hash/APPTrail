@@ -1821,11 +1821,11 @@ function coachAthleteProfile(){
 }
 function saveAthleteProfile(){
   const str=id=>document.getElementById(id)?.value.trim()||'';
-  const num=(id,min,max)=>{const v=str(id);if(!v)return null;const n=Number(v);if(!Number.isFinite(n)||n<min||n>max)throw Error('Valeur incorrecte : '+id);return n};
+  const num=(id,min,max)=>{const v=str(id);if(!v)return null;const n=Number(v.replace(',', '.'));if(!Number.isFinite(n)||n<min||n>max)throw Error('Valeur incorrecte pour « '+({apMin:'Distance minimale vélotaf',apMax:'Distance maximale vélotaf'}[id]||id)+' » : saisir un nombre entre '+min+' et '+max+'.');return n};
   try{
-    const mode=str('apMode');const min=num('apMin',1,100),max=num('apMax',1,100);
+    const mode=str('apMode');const min=mode==='auto'?num('apMin',1,100):null,max=mode==='auto'?num('apMax',1,100):null;
     if(min!==null&&max!==null&&min>max)throw Error('La distance minimale dépasse la maximale.');
-    prof={...prof,name:str('apName'),age:num('apAge',10,110),weight:num('apWeight',20,350),height:num('apHeight',100,240),sex:str('apSex'),experience:str('apExperience'),sessions:num('apSessions',1,14),availableDays:str('apDays'),constraints:str('apConstraints'),restHr:num('apRestHr',25,130),maxHr:num('apMaxHr',80,240),commuteMode:mode,commuteMinKm:min??14,commuteMaxKm:max??19,profileSetup:true};
+    prof={...prof,name:str('apName'),age:num('apAge',10,110),weight:num('apWeight',20,350),height:num('apHeight',100,240),sex:str('apSex'),experience:str('apExperience'),sessions:num('apSessions',1,14),availableDays:str('apDays'),constraints:str('apConstraints'),restHr:num('apRestHr',25,130),maxHr:num('apMaxHr',80,240),commuteMode:mode,commuteMinKm:min??prof.commuteMinKm??14,commuteMaxKm:max??prof.commuteMaxKm??19,profileSetup:true};
     save(KF,prof);log('Profil sportif enregistré sur cet appareil. Il sera transmis au coach lors des échanges.');paint();
   }catch(e){alert(e.message)}
 }
