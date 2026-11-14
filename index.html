@@ -1171,6 +1171,17 @@ function workoutMarkup(workout) {
 }
 function formatPace(sec) { const n=Math.round(+sec); return Math.floor(n/60)+':'+String(n%60).padStart(2,'0'); }
 
+function normalizeProgramProposal(p) {
+  if (!p || typeof p !== 'object' || !Array.isArray(p.weeks)) return p;
+  p.weeks.forEach(w => {
+    if (!w || !Array.isArray(w.sessions)) return;
+    const runs = w.sessions.filter(s => s && s.sport === 'run');
+    if (runs.every(s => s.distanceKm !== '' && s.distanceKm != null && Number.isFinite(Number(s.distanceKm)))) {
+      w.targetRunKm = Math.round(runs.reduce((n,s) => n + Number(s.distanceKm), 0) * 10) / 10;
+    }
+  });
+  return p;
+}
 function validProgramProposal(p) {
   if (!p || typeof p !== 'object' || !Array.isArray(p.weeks) || !p.weeks.length || p.weeks.length > 80) return false;
   const dateOK = d => typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d) && !Number.isNaN(Date.parse(d + 'T00:00:00Z'));
