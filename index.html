@@ -191,7 +191,15 @@ nav button .nav-label{font-size:9px;letter-spacing:0}
 .more-link{display:flex;align-items:center;justify-content:space-between;text-align:left;gap:14px;width:100%;padding:17px 16px;background:var(--card2);color:var(--txt);border:1px solid var(--line);border-radius:13px;font:inherit;cursor:pointer}
 .more-link strong{display:block;font-size:16px}.more-link small{display:block;margin-top:3px}
 .fatigue-note{font-size:12px;color:var(--mut);margin-top:8px}
-.profile-cols{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.profile-cols input,.profile-cols select{min-width:0;width:100%}</style>
+.profile-cols{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.profile-cols input,.profile-cols select{min-width:0;width:100%}
+.exlib-filter{display:flex;gap:7px;overflow-x:auto;padding:5px 0 12px}
+.exlib-filter button{flex:none;border:1px solid var(--line);border-radius:30px;background:var(--card2);color:var(--txt);padding:9px 13px}
+.exlib-filter button.active{background:var(--run);color:white}
+.exlib-list{display:grid;gap:12px}
+.exlib-card{border:1px solid var(--line);border-radius:14px;padding:15px;background:var(--card2)}
+.exlib-card h3{margin:0 0 6px}.exlib-card p{margin:8px 0}
+.exlib-card a{display:inline-flex;padding:11px 13px;border-radius:9px;background:var(--run);color:#fff;text-decoration:none;font-weight:700;margin-top:8px}
+</style>
 </head>
 <body>
 <header>
@@ -1903,16 +1911,31 @@ function vCfg() {
     '<div class="card"><h2>Autres</h2><button class="b alt" onclick="demo()">Charger des données de démo</button><button class="b alt" onclick="wipe()">Tout effacer</button></div>' +
     '<div class="card"><div id="log"></div></div>';
 }
+
+const EXLIB = [["Squat", "Jambes", "Débutant", "Pieds largeur des épaules, recule les hanches, fléchis les genoux puis remonte en poussant dans le sol.", "Garde les talons au sol et les genoux alignés avec les pieds.", "bodyweight squat"], ["Fente arrière", "Jambes", "Débutant", "Recule un pied, descends verticalement puis reviens debout. Alterne les jambes.", "Commence avec une faible amplitude et un appui si nécessaire.", "reverse lunge"], ["Pont fessier", "Hanches", "Débutant", "Allongé sur le dos, genoux pliés, pousse dans les talons pour lever le bassin.", "Ne cambre pas exagérément le bas du dos.", "glute bridge"], ["Montée sur marche", "Jambes", "Débutant", "Pose un pied sur une marche stable, monte sans élan puis redescends lentement.", "Choisis une marche basse et garde le genou stable.", "step up exercise"], ["Mollets debout", "Jambes", "Débutant", "Debout, monte lentement sur la pointe des pieds, puis redescends en contrôle.", "Évite de rebondir ; utilise un support pour l’équilibre.", "standing calf raise"], ["Gainage ventral", "Tronc", "Débutant", "Appui sur les avant-bras et les pointes de pieds, corps aligné.", "Respire normalement, évite de laisser tomber le bassin.", "forearm plank"], ["Gainage latéral", "Tronc", "Intermédiaire", "Sur un avant-bras, soulève le bassin en gardant le corps aligné.", "Version facile : genoux au sol.", "side plank"], ["Bird-dog", "Tronc", "Débutant", "À quatre pattes, tends lentement bras droit et jambe gauche puis alterne.", "Garde le bassin stable sans tourner le dos.", "bird dog exercise"], ["Dead bug", "Tronc", "Débutant", "Sur le dos, bras et jambes levés, éloigne lentement bras et jambe opposés.", "Garde les lombaires confortablement stables.", "dead bug exercise"], ["Pompes inclinées", "Haut du corps", "Débutant", "Mains sur un support stable, fléchis les coudes puis repousse.", "Plus le support est haut, plus l’exercice est accessible.", "incline push up"], ["Soulevé de terre unilatéral sans charge", "Hanches", "Intermédiaire", "En appui sur une jambe, bascule le buste vers l’avant en reculant l’autre jambe.", "Garde le dos neutre et commence près d’un mur.", "single leg romanian deadlift bodyweight"], ["Chaise contre un mur", "Jambes", "Débutant", "Dos au mur, descends en position assise partielle et tiens quelques secondes.", "Adapte l’angle des genoux à ton confort.", "wall sit exercise"]];
+let exlibFilter='Tous';
+function setExlibFilter(f){exlibFilter=f;paint()}
+function vExercises(){
+  const filters=['Tous','Jambes','Hanches','Tronc','Haut du corps'];
+  const list=EXLIB.filter(e=>exlibFilter==='Tous'||e[1]===exlibFilter);
+  return '<div class="card"><h2>Bibliothèque de renforcement</h2><p>Exercices simples utiles pour compléter la course et le vélo. Consulte la démonstration vidéo avant de commencer, puis privilégie une exécution lente et confortable.</p>'+
+    '<p class="m">Les boutons ouvrent une recherche vidéo ciblée sur YouTube : choisis une démonstration pédagogique, car les vidéos ne sont pas hébergées par MENDI.</p>'+
+    '<div class="exlib-filter">'+filters.map(f=>'<button class="'+(f===exlibFilter?'active':'')+'" onclick="setExlibFilter('+JSON.stringify(f).replace(/"/g,'&quot;')+')">'+esc(f)+'</button>').join('')+'</div>'+
+    '<div class="exlib-list">'+list.map(e=>'<article class="exlib-card"><h3>'+esc(e[0])+'</h3><small>'+esc(e[1])+' · '+esc(e[2])+'</small><p>'+esc(e[3])+'</p><p class="m"><b>Point de vigilance :</b> '+esc(e[4])+'</p>'+
+    '<a target="_blank" rel="noopener noreferrer" href="https://www.youtube.com/results?search_query='+encodeURIComponent(e[5]+' exercise technique demonstration')+'">▶ Voir des vidéos de démonstration</a></article>').join('')+'</div>'+
+    '<p class="m" style="margin-top:15px">Commence par quelques répétitions maîtrisées. Arrête en cas de douleur inhabituelle. Pour un exercice prescrit par le coach mais absent de la bibliothèque, demande-lui une alternative ou une explication.</p>'+
+    '<p class="m">Référence complémentaire : <a href="https://www.acefitness.org/resources/everyone/exercise-library/" target="_blank" rel="noopener noreferrer">Bibliothèque d’exercices ACE Fitness</a>.</p></div>';
+}
 function vMore(){
-  const items=[['profile','Mon profil','Informations personnelles et vélotaf'],['acts','Activités','Historique Strava et statistiques'],['gear','Matériel','Chaussures, vélos et équipements'],['cfg','Réglages','Synchronisation, analyses et sauvegardes']];
+  const items=[['profile','Mon profil','Informations personnelles et vélotaf'],['acts','Activités','Historique Strava et statistiques'],['gear','Matériel','Chaussures, vélos et équipements'],['exercises','Exercices de renforcement','Fiches pratiques et démonstrations vidéo'],['cfg','Réglages','Synchronisation, analyses et sauvegardes']];
   return '<div class="card"><h2>Plus de pages</h2><p class="prog-note">Accès aux rubriques secondaires, sans surcharger la barre de navigation sur iPhone.</p><div class="more-menu">'+items.map(([id,title,sub])=>'<button class="more-link" onclick="goTab(\''+id+'\')"><span><strong>'+title+'</strong><small>'+sub+'</small></span><span aria-hidden="true">›</span></button>').join('')+'</div></div>';
 }
 function goTab(t){tab=t;paint();window.scrollTo&&window.scrollTo(0,0)}
 function paintStatus() { const s = $('#status'); if (s) s.textContent = acts.length ? acts.length + ' activités' + (cfg.last ? ' · synchro ' + new Date(cfg.last).toLocaleString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '') : 'Aucune donnée' }
 function paint() {
   if(tab==='home' && !prof.profileSetup) { /* invitation non bloquante affichée ci-dessous */ }
-  document.querySelectorAll('nav button').forEach(b => b.classList.toggle('on', b.dataset.t === tab || (b.dataset.t === 'more' && ['profile','acts','gear','cfg'].includes(tab))));
-  $('#view').innerHTML = tab === 'home' ? vHome() : tab === 'plan' ? vPlan() : tab === 'coach' ? coachPage() : tab === 'progress' ? vProgress() : tab === 'acts' ? vActs() : tab === 'gear' ? vGear() : tab === 'more' ? vMore() : tab === 'profile' ? vAthleteProfile() : vCfg();
+  document.querySelectorAll('nav button').forEach(b => b.classList.toggle('on', b.dataset.t === tab || (b.dataset.t === 'more' && ['profile','acts','gear','cfg','exercises'].includes(tab))));
+  $('#view').innerHTML = tab === 'home' ? vHome() : tab === 'plan' ? vPlan() : tab === 'coach' ? coachPage() : tab === 'progress' ? vProgress() : tab === 'acts' ? vActs() : tab === 'gear' ? vGear() : tab === 'exercises' ? vExercises() : tab === 'more' ? vMore() : tab === 'profile' ? vAthleteProfile() : vCfg();
   if(tab==='home' && !prof.profileSetup) $('#view').insertAdjacentHTML('afterbegin','<div class="card"><h2>Bienvenue sur MENDI</h2><p>Complétez votre profil sportif pour aider le coach à personnaliser votre programme. Vos données et votre plan actuels sont conservés.</p><button class="b" onclick="goTab(\'profile\')">Configurer mon profil</button></div>');
   paintStatus();
   if (tab === 'plan' && plan) { const sc = $('#psc'); if (sc) { const i = plan.weeks.findIndex(w => w.t >= curWeek()); sc.scrollLeft = Math.max(0, i * 18 - 80) } }
