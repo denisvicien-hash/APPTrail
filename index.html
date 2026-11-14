@@ -191,7 +191,7 @@ nav button .nav-label{font-size:9px;letter-spacing:0}
 .more-link{display:flex;align-items:center;justify-content:space-between;text-align:left;gap:14px;width:100%;padding:17px 16px;background:var(--card2);color:var(--txt);border:1px solid var(--line);border-radius:13px;font:inherit;cursor:pointer}
 .more-link strong{display:block;font-size:16px}.more-link small{display:block;margin-top:3px}
 .fatigue-note{font-size:12px;color:var(--mut);margin-top:8px}
-</style>
+.profile-cols{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.profile-cols input,.profile-cols select{min-width:0;width:100%}</style>
 </head>
 <body>
 <header>
@@ -294,18 +294,21 @@ const imgSrc = g => g.imgData || g.img || 'trail1.jpg';
 /* Vélotaf : trajet individuel de 14 à 19 km en semaine, hors VAE.
    Deux activités par jour sont habituelles, mais un trajet isolé reste possible.
    La date Strava est locale : ne pas la convertir en UTC pour le jour de semaine. */
-const isEbike = a => /^(e-?bike|e-?mountainbike|electricbike|ebikeride)$/i.test(String(a.type||'').replace(/\s/g,'')) || /vélo électrique|\bvae\b/i.test(String(a.type||''));
+const isEbike = a => /^(e-?bike(ride)?|e-?mountainbike(ride)?|electricbike(ride)?)$/i.test(String(a.type||'').replace(/\s/g,'')) || /vélo électrique|\bvae\b/i.test(String(a.type||''));
 const isCommute = a => {
   if (grp(a.type) !== 'ride' || isEbike(a)) return false;
-  if (/Gravel|Mountain|Virtual/i.test(String(a.type || ''))) return false;
+  if (prof.commuteMode === 'none') return false;
+  if (prof.commuteOverrides && Object.prototype.hasOwnProperty.call(prof.commuteOverrides, String(a.id))) return prof.commuteOverrides[String(a.id)] === 'commute';
+  if (prof.commuteMode === 'manual') return false;
+  if (/Virtual/i.test(String(a.type || ''))) return false; // VTT et gravel peuvent être du vélotaf
   const km = Number(a.dist) / 1000;
-  if (!Number.isFinite(km) || km < 14 || km > 19) return false;
+  if (!Number.isFinite(km) || km < (prof.commuteMinKm??14) || km > (prof.commuteMaxKm??19)) return false;
   const localDate = String(a.date || '').slice(0, 10);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(localDate)) return false;
   const weekday = new Date(localDate + 'T12:00:00Z').getUTCDay();
   return weekday >= 1 && weekday <= 5;
 };
-const outing = a => grp(a.type) === 'ride' && !isCommute(a) && a.time >= 2700;
+const outing = a => grp(a.type) === 'ride' && !isEbike(a) && !isCommute(a) && a.time >= 2700;
 const weekRuns = t => acts.filter(a => grp(a.type) === 'run' && weekStart(a.date) === t).sort((a, b) => a.date.localeCompare(b.date));
 const runKmWeek = t => weekRuns(t).reduce((s, a) => s + a.dist, 0) / 1000;
 const bikeMinWeek = t => acts.filter(a => outing(a) && weekStart(a.date) === t).reduce((s, a) => s + a.time, 0) / 60;
@@ -996,7 +999,7 @@ function lighten(f) {
   if (feels[0]) { feels[0].f = null; save(KR, feels) }
   makePlan(true); paint();
 }
-const COACH_SYS = `Tu es le coach de course à pied (trail), de vélo et de renforcement de MENDI Training. Tu réponds en français, avec le vouvoiement, concrètement et brièvement (8 phrases maximum). Tu n'es pas médecin : en cas de douleur importante, inhabituelle, qui s'aggrave ou persiste, conseille de suspendre la séance concernée et de consulter un professionnel de santé. N'invente aucune donnée. Les données structurées peuvent contenir athlete.recentActivities : analyse-les pour commenter les séances réellement effectuées, leur régularité, les distances, durées, dénivelés, allures/vitesses, fréquence cardiaque, cadence et puissance lorsqu'elles existent. Distingue les activités de vélotaf (commute=true) des entraînements. Une donnée absente ne doit jamais être estimée ou inventée.
+const COACH_SYS = `Le profil sportif individuel transmis dans athlete.profile est la référence pour l'âge, les disponibilités, le niveau et le vélotaf. Si des données nécessaires au plan manquent, demande-les avant de proposer un programme complet. Ne déduis pas les capacités physiques de l'âge, du sexe ou du poids seuls.\nTu es le coach de course à pied (trail), de vélo et de renforcement de MENDI Training. Tu réponds en français, avec le vouvoiement, concrètement et brièvement (8 phrases maximum). Tu n'es pas médecin : en cas de douleur importante, inhabituelle, qui s'aggrave ou persiste, conseille de suspendre la séance concernée et de consulter un professionnel de santé. N'invente aucune donnée. Les données structurées peuvent contenir athlete.recentActivities : analyse-les pour commenter les séances réellement effectuées, leur régularité, les distances, durées, dénivelés, allures/vitesses, fréquence cardiaque, cadence et puissance lorsqu'elles existent. Distingue les activités de vélotaf (commute=true) des entraînements et respecte le mode vélotaf du profil. Une donnée absente ne doit jamais être estimée ou inventée.
 Tu dois toujours répondre sous forme d'un objet JSON avec exactement trois propriétés : reply (texte destiné à l'athlète), actions (tableau d'actions ponctuelles) et programProposal (objet de programme complet ou null). Ne mets jamais de Markdown ni de bloc de code autour du JSON. Lorsqu’on te demande explicitement de proposer une modification du programme, tu dois examiner l’ensemble de la discussion et le planning fourni, puis produire au moins une action structurée pertinente si les informations disponibles le permettent. Une simple recommandation en texte ne remplace pas une action. Si aucune action autorisée ne convient ou si une donnée indispensable manque, explique précisément pourquoi et pose une question.
 Si l'utilisateur signale des courbatures, une fatigue ou une douleur qui rend la séance prévue inadaptée, propose spontanément une adaptation prudente du programme, même s'il ne dit pas littéralement « modifie mon plan ». Pour une simple question sans conséquence sur l'entraînement, ne déclenche pas d'action. Ne prétends jamais qu'une modification est déjà appliquée : toutes les actions attendent le clic de validation de l'utilisateur.
 Actions possibles :
@@ -1011,13 +1014,14 @@ Si les informations indispensables manquent (date, séance cible, distance ou du
 function coachContext() {
   const cur = curWeek(), L = [];
   L.push('Aujourd’hui : ' + todayIso() + ' (' + DN[dow(todayIso())] + ').');
+  L.push('Profil sportif déclaré : ' + JSON.stringify(coachAthleteProfile()) + '. Données facultatives ou absentes : ne rien inventer.');
   L.push('Objectifs : ' + goals.map(g => g.name + ' le ' + g.date + ' (' + g.type + ', ' + g.runKm + ' km à pied, ' + g.rideKm + ' km à vélo, priorité ' + prioOf(g) + ')').join(' ; '));
   if (absences.length) L.push('Absences : ' + absences.map(a => a.name + ' du ' + a.start + ' au ' + a.end + ' (course ' + a.runPct + ' %, vélo ' + (a.bike ? 'oui' : 'non') + ')').join(' ; '));
   L.push('Course réalisée (km par semaine, de la plus ancienne à la dernière semaine complète) : ' + [4, 3, 2, 1].map(i => runKmWeek(cur - i * WK).toFixed(0)).join(', ') + '. Cette semaine : ' + runKmWeek(cur).toFixed(0) + ' km.');
   L.push(physioText());
   L.push('Objectif complémentaire : intégrer du renforcement progressif 1 à 2 fois par semaine pour mieux tolérer les descentes de trail (quadriceps en excentrique, fessiers, mollets, gainage), sans placer de séance dure avant la sortie longue ni pendant l’affûtage/récupération.');
-  L.push('Vélotaf classique : il compte dans la fatigue et la récupération, même sans être une séance structurée. VAE exclus des estimations de charge.');
-  L.push('Vélotaf (trajets individuels de 14 à 19 km en semaine, hors VAE ; km et minutes par semaine, 4 dernières semaines complètes) : ' + [4,3,2,1].map(i => { const w=cur-i*WK, l=acts.filter(a => isCommute(a) && !isEbike(a) && weekStart(a.date)===w); return (l.reduce((n,a)=>n+(+a.dist||0),0)/1000).toFixed(0)+' km / '+Math.round(l.reduce((n,a)=>n+(+a.time||0),0)/60)+' min'; }).join(' ; ') + '.');
+  L.push('Vélotaf : mode ' + (prof.commuteMode || 'auto') + '. Les trajets identifiés comptent dans la fatigue ; les VAE sont exclus.');
+  L.push('Vélotaf selon les réglages du profil (km et minutes par semaine, 4 dernières semaines complètes) : ' + [4,3,2,1].map(i => { const w=cur-i*WK, l=acts.filter(a => isCommute(a) && !isEbike(a) && weekStart(a.date)===w); return (l.reduce((n,a)=>n+(+a.dist||0),0)/1000).toFixed(0)+' km / '+Math.round(l.reduce((n,a)=>n+(+a.time||0),0)/60)+' min'; }).join(' ; ') + '.');
   L.push('Vélo hors vélotaf (minutes) sur les 4 dernières semaines : ' + [4, 3, 2, 1].map(i => Math.round(bikeMinWeek(cur - i * WK))).join(', ') + '.');
   if (plan) plan.weeks.filter(w => w.t >= cur).slice(0, 8).forEach(w => { const runs = assignDays(w).filter(r => r.iso && r.iso >= todayIso()).map(r => r.iso + ' ' + r.t + ' ' + (r.race ? r.txt : r.km + ' km') + (r.done ? ' (fait)' : '')); const other = (Array.isArray(w.coachSessions) ? w.coachSessions : []).filter(x => x.date >= todayIso()).map(x => x.date + ' ' + x.title + ' (' + x.sport + ')' + (x.durationMin ? ' ' + x.durationMin + ' min' : '') + (x.distanceKm ? ' ' + x.distanceKm + ' km' : '')); L.push('Semaine du ' + isoOf(w.t) + ' : ' + w.phase + ', ' + w.vol + ' km. Séances : ' + runs.concat(other).join(' | ')); });
   const fo = offs.filter(d => d >= todayIso()); if (fo.length) L.push('Jours off déjà posés : ' + fo.join(', ') + '.');
@@ -1055,7 +1059,7 @@ function coachProgramData() {
   return {
     today: todayIso(),
     athlete: {
-      profile: { weeklyRunKm: startStats().vol, longestRunKm: startStats().long, weeklyBikeMinutes: startStats().bike, commuteKm: 32 },
+      profile: { ...coachAthleteProfile(), weeklyRunKm: startStats().vol, longestRunKm: startStats().long, weeklyBikeMinutes: startStats().bike, commuteKmLast4Weeks: [4,3,2,1].reduce((n,i)=>n+commuteWeek(cur-i*WK).km,0) },
       weeklyHistory,
       physiology: physio(),
       recentActivities: acts
@@ -1077,7 +1081,7 @@ function coachProgramData() {
           averagePowerW: a.watts || undefined, maxPowerW: a.maxWatts || undefined,
           weightedAveragePowerW: a.weightedWatts || undefined,
           calories: a.calories || undefined, averageTemperatureC: a.temp || undefined,
-          device: a.device || undefined, commute: !!a.commute
+          device: a.device || undefined, commute: isCommute(a)
         })),
       recentFeelings: feels.slice(0, 6).map(f => ({ date: f.date, energy: f.energy, pain: f.pain, note: f.note || '' }))
     },
@@ -1766,8 +1770,45 @@ function vActs() {
     '<div class="card"><h2>Heures par semaine (26 sem.) <span class="run">■ course</span> <span class="ride">■ vélo</span></h2>' + actsChart() +
     '<small>' + acts.length + ' activités · courses avec FC : ' + withHr + '/' + runs.length + ' (' + pct + ' %)</small></div>' +
     '<select onchange="filt=this.value;paint()">' + [['all', 'Tout'], ['run', 'Course à pied'], ['ride', 'Vélo']].map(([v, t]) => '<option value="' + v + '"' + (filt === v ? ' selected' : '') + '>' + t + '</option>').join('') + '</select>' +
-    '<div class="card">' + (l.map(a => '<div class="row"><div><div class="n ' + grp(a.type) + '">' + esc(a.name) + '</div><div class="m">' + fmtD(a.date) + ' · ' + esc(a.type) + (isCommute(a) ? ' · vélotaf' : '') + (a.gear ? ' · ' + esc(gearName(a.gear)) : '') + '</div></div>' +
+    '<div class="card">' + (l.map(a => '<div class="row"><div><div class="n ' + grp(a.type) + '">' + esc(a.name) + '</div><div class="m">' + fmtD(a.date) + ' · ' + esc(a.type) + (isCommute(a) ? ' · vélotaf' : '') + (grp(a.type)==='ride' && !isEbike(a) ? ' · <select style="width:auto;max-width:130px;display:inline-block;padding:3px" onchange="setCommuteOverride('+JSON.stringify(String(a.id))+',this.value)"><option value="auto"'+(!(prof.commuteOverrides||{})[String(a.id)]?' selected':'')+'>Auto</option><option value="commute"'+((prof.commuteOverrides||{})[String(a.id)]==='commute'?' selected':'')+'>Vélotaf</option><option value="leisure"'+((prof.commuteOverrides||{})[String(a.id)]==='leisure'?' selected':'')+'>Loisir</option></select>' : '') + (a.gear ? ' · ' + esc(gearName(a.gear)) : '') + '</div></div>' +
       '<div class="r">' + (a.dist / 1000).toFixed(1) + ' km · ' + fmtH(a.time) + '<br>' + Math.round(a.elev) + ' m D+' + (a.hr ? ' · ' + Math.round(a.hr) + ' bpm' : '') + '</div></div>').join('') || 'Rien à afficher.') + '</div>';
+}
+function coachAthleteProfile(){
+  return { name:prof.name||null, age:prof.age||null, weightKg:prof.weight||null, heightCm:prof.height||null,
+    sex:prof.sex||null, experience:prof.experience||null, sessionsPerWeek:prof.sessions||null,
+    availableDays:prof.availableDays||null, constraints:prof.constraints||null,
+    restingHeartRate:prof.restHr||null, maxHeartRate:prof.maxHr||null,
+    commuteMode:prof.commuteMode||'auto', commuteMinKm:prof.commuteMinKm??14, commuteMaxKm:prof.commuteMaxKm??19 };
+}
+function saveAthleteProfile(){
+  const str=id=>document.getElementById(id)?.value.trim()||'';
+  const num=(id,min,max)=>{const v=str(id);if(!v)return null;const n=Number(v);if(!Number.isFinite(n)||n<min||n>max)throw Error('Valeur incorrecte : '+id);return n};
+  try{
+    const mode=str('apMode');const min=num('apMin',1,100),max=num('apMax',1,100);
+    if(min!==null&&max!==null&&min>max)throw Error('La distance minimale dépasse la maximale.');
+    prof={...prof,name:str('apName'),age:num('apAge',10,110),weight:num('apWeight',20,350),height:num('apHeight',100,240),sex:str('apSex'),experience:str('apExperience'),sessions:num('apSessions',1,14),availableDays:str('apDays'),constraints:str('apConstraints'),restHr:num('apRestHr',25,130),maxHr:num('apMaxHr',80,240),commuteMode:mode,commuteMinKm:min??14,commuteMaxKm:max??19,profileSetup:true};
+    save(KF,prof);log('Profil sportif enregistré sur cet appareil. Il sera transmis au coach lors des échanges.');paint();
+  }catch(e){alert(e.message)}
+}
+function vAthleteProfile(){
+ const v=(k)=>esc(prof[k]??'');const opt=(current,values)=>values.map(([id,label])=>'<option value="'+id+'"'+(current===id?' selected':'')+'>'+label+'</option>').join('');
+ return '<div class="card"><h2>Mon profil sportif</h2><p class="m">Ces données sont facultatives, stockées sur cet appareil et transmises au coach IA lorsque vous le sollicitez. Elles ne sont pas partagées avec les autres utilisateurs.</p>'+ 
+ '<label>Prénom (facultatif)</label><input id="apName" value="'+v('name')+'">'+
+ '<div class="profile-cols"><div><label>Âge (ans)</label><input id="apAge" type="number" inputmode="numeric" value="'+v('age')+'"></div><div><label>Poids (kg)</label><input id="apWeight" type="number" inputmode="decimal" value="'+v('weight')+'"></div><div><label>Taille (cm)</label><input id="apHeight" type="number" inputmode="numeric" value="'+v('height')+'"></div><div><label>Sexe (facultatif)</label><select id="apSex">'+opt(prof.sex||'', [['','Non renseigné'],['female','Femme'],['male','Homme'],['other','Autre / préfère ne pas préciser']])+'</select></div></div>'+ 
+ '<label>Expérience sportive</label><select id="apExperience">'+opt(prof.experience||'', [['','À préciser'],['beginner','Débutant'],['intermediate','Intermédiaire'],['advanced','Confirmé']])+'</select>'+ 
+ '<label>Nombre de séances possibles par semaine</label><input id="apSessions" type="number" min="1" max="14" value="'+v('sessions')+'">'+
+ '<label>Jours habituellement disponibles</label><input id="apDays" placeholder="Ex. mardi, jeudi et dimanche" value="'+v('availableDays')+'">'+
+ '<label>Contraintes, blessures, préférences ou autres sports</label><textarea id="apConstraints" rows="3" placeholder="Facultatif">'+esc(prof.constraints||'')+'</textarea>'+ 
+ '<div class="profile-cols"><div><label>FC au repos (bpm)</label><input id="apRestHr" type="number" value="'+v('restHr')+'"></div><div><label>FC maximale mesurée (bpm)</label><input id="apMaxHr" type="number" value="'+v('maxHr')+'"></div></div>'+ 
+ '<h3>Vélotaf</h3><label>Classification des trajets vélo</label><select id="apMode" onchange="toggleCommuteSettings(this.value)">'+opt(prof.commuteMode||'auto', [['none','Pas de vélotaf : toutes les sorties vélo sont loisir'],['auto','Détection automatique en semaine'],['manual','Classification manuelle dans Activités']])+'</select>'+ 
+ '<div id="apAuto" style="display:'+(prof.commuteMode==='none'||prof.commuteMode==='manual'?'none':'block')+'"><div class="profile-cols"><div><label>Distance minimale (km)</label><input id="apMin" type="number" step="0.1" value="'+(prof.commuteMinKm??14)+'"></div><div><label>Distance maximale (km)</label><input id="apMax" type="number" step="0.1" value="'+(prof.commuteMaxKm??19)+'"></div></div><small>Du lundi au vendredi ; VTT et gravel inclus, VAE exclus. Un trajet isolé est accepté.</small></div>'+ 
+ '<button class="b" onclick="saveAthleteProfile()">Enregistrer mon profil</button><small>Votre programme existant n’est pas modifié automatiquement. Le coach utilisera ce profil lors de sa prochaine réponse.</small></div>';
+}
+function toggleCommuteSettings(mode){document.getElementById('apAuto').style.display=mode==='auto'?'block':'none'}
+function setCommuteOverride(id,value){
+  prof.commuteOverrides=prof.commuteOverrides||{};
+  if(value==='auto')delete prof.commuteOverrides[String(id)];else prof.commuteOverrides[String(id)]=value;
+  save(KF,prof);paint();
 }
 function vCfg() {
   const au = startStats(true);
@@ -1784,7 +1825,7 @@ function vCfg() {
     '<div class="card"><h2>Réglages du plan</h2><small>Estimés à partir de vos activités. Saisissez une valeur pour la forcer.</small>' +
     '<label>Volume de course (km par semaine), estimé : ' + au.vol + '</label><input id="pvol" type="number" inputmode="decimal" placeholder="' + au.vol + '" value="' + (prof.vol || '') + '">' +
     '<label>Plus longue sortie à pied (km), estimée : ' + au.long + '</label><input id="plong" type="number" inputmode="decimal" placeholder="' + au.long + '" value="' + (prof.long || '') + '">' +
-    '<small>Vélotaf : sorties de 14 à 19 km du lundi au vendredi, hors VAE. Chaque trajet est compté séparément.</small>' +
+    '<small>Configurez les trajets vélotaf dans Plus → Mon profil.</small>' +
     '<button class="b alt" onclick="saveProf()">Enregistrer et recalculer le plan</button></div>' +
     det('c4', '<h2 style="margin:0">Données détaillées pour le coach</h2>',
     '<div style="margin-top:10px"><div class="m" style="margin-bottom:8px">Récupère pour chaque sortie la courbe de fréquence cardiaque, l’allure et l’altitude, puis calcule sur l’appareil : zones FC, charge, dérive cardiaque, montées/descentes, meilleurs efforts. Le coach reçoit un résumé compact, pas les milliers de points bruts.</div>' +
@@ -1808,14 +1849,16 @@ function vCfg() {
     '<div class="card"><div id="log"></div></div>';
 }
 function vMore(){
-  const items=[['acts','Activités','Historique Strava et statistiques'],['gear','Matériel','Chaussures, vélos et équipements'],['cfg','Réglages','Synchronisation, analyses et sauvegardes']];
+  const items=[['profile','Mon profil','Informations personnelles et vélotaf'],['acts','Activités','Historique Strava et statistiques'],['gear','Matériel','Chaussures, vélos et équipements'],['cfg','Réglages','Synchronisation, analyses et sauvegardes']];
   return '<div class="card"><h2>Plus de pages</h2><p class="prog-note">Accès aux rubriques secondaires, sans surcharger la barre de navigation sur iPhone.</p><div class="more-menu">'+items.map(([id,title,sub])=>'<button class="more-link" onclick="goTab(\''+id+'\')"><span><strong>'+title+'</strong><small>'+sub+'</small></span><span aria-hidden="true">›</span></button>').join('')+'</div></div>';
 }
 function goTab(t){tab=t;paint();window.scrollTo&&window.scrollTo(0,0)}
 function paintStatus() { const s = $('#status'); if (s) s.textContent = acts.length ? acts.length + ' activités' + (cfg.last ? ' · synchro ' + new Date(cfg.last).toLocaleString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '') : 'Aucune donnée' }
 function paint() {
-  document.querySelectorAll('nav button').forEach(b => b.classList.toggle('on', b.dataset.t === tab || (b.dataset.t === 'more' && ['acts','gear','cfg'].includes(tab))));
-  $('#view').innerHTML = tab === 'home' ? vHome() : tab === 'plan' ? vPlan() : tab === 'coach' ? coachPage() : tab === 'progress' ? vProgress() : tab === 'acts' ? vActs() : tab === 'gear' ? vGear() : tab === 'more' ? vMore() : vCfg();
+  if(tab==='home' && !prof.profileSetup) { /* invitation non bloquante affichée ci-dessous */ }
+  document.querySelectorAll('nav button').forEach(b => b.classList.toggle('on', b.dataset.t === tab || (b.dataset.t === 'more' && ['profile','acts','gear','cfg'].includes(tab))));
+  $('#view').innerHTML = tab === 'home' ? vHome() : tab === 'plan' ? vPlan() : tab === 'coach' ? coachPage() : tab === 'progress' ? vProgress() : tab === 'acts' ? vActs() : tab === 'gear' ? vGear() : tab === 'more' ? vMore() : tab === 'profile' ? vAthleteProfile() : vCfg();
+  if(tab==='home' && !prof.profileSetup) $('#view').insertAdjacentHTML('afterbegin','<div class="card"><h2>Bienvenue sur MENDI</h2><p>Complétez votre profil sportif pour aider le coach à personnaliser votre programme. Vos données et votre plan actuels sont conservés.</p><button class="b" onclick="goTab(\'profile\')">Configurer mon profil</button></div>');
   paintStatus();
   if (tab === 'plan' && plan) { const sc = $('#psc'); if (sc) { const i = plan.weeks.findIndex(w => w.t >= curWeek()); sc.scrollLeft = Math.max(0, i * 18 - 80) } }
   if (tab === 'coach') { const input = $('#cin'); if (input && chatBusy) input.blur(); }
