@@ -186,6 +186,11 @@ nav button .nav-label{font-size:9px;letter-spacing:0}
 .prog-kpi small{font-size:11px;display:block}
 .prog-note{font-size:12px;color:var(--mut);line-height:1.5;margin:9px 0 0}
 .prog-svg{width:100%;height:auto;display:block}
+/* Navigation mobile : cinq destinations principales, pages secondaires dans Plus */
+.more-menu{display:grid;gap:10px;margin-top:12px}
+.more-link{display:flex;align-items:center;justify-content:space-between;text-align:left;gap:14px;width:100%;padding:17px 16px;background:var(--card2);color:var(--txt);border:1px solid var(--line);border-radius:13px;font:inherit;cursor:pointer}
+.more-link strong{display:block;font-size:16px}.more-link small{display:block;margin-top:3px}
+.fatigue-note{font-size:12px;color:var(--mut);margin-top:8px}
 </style>
 </head>
 <body>
@@ -211,17 +216,9 @@ nav button .nav-label{font-size:9px;letter-spacing:0}
     <span class="nav-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 19V5M3 19h18"/><path d="m6 15 4-4 3 2 6-7"/></svg></span>
     <span class="nav-label">Progression</span>
   </button>
-  <button data-t="acts" aria-label="Activités">
-    <span class="nav-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h3l2.2-6 4.1 12 2.5-7 1.5 3H21"/></svg></span>
-    <span class="nav-label">Activités</span>
-  </button>
-  <button data-t="gear" aria-label="Matériel">
-    <span class="nav-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="17" r="4"/><circle cx="18" cy="17" r="4"/><path d="m6 17 4-8 4 8H6l3-5h6l3 5M9 9h3M15 7h2"/></svg></span>
-    <span class="nav-label">Matériel</span>
-  </button>
-  <button data-t="cfg" aria-label="Réglages">
-    <span class="nav-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="m19.4 15 .1.1 1.1 1.9-2 2-1.9-1.1a8 8 0 0 1-1.5.6l-.6 2.1h-2.8l-.6-2.1a8 8 0 0 1-1.5-.6L7.8 19l-2-2 1.1-1.9a8 8 0 0 1-.6-1.5L4.2 13v-2.8l2.1-.6a8 8 0 0 1 .6-1.5L5.8 6.2l2-2 1.9 1.1a8 8 0 0 1 1.5-.6l.6-2.1h2.8l.6 2.1a8 8 0 0 1 1.5.6l1.9-1.1 2 2-1.1 1.9a8 8 0 0 1 .6 1.5l2.1.6V13l-2.1.6a8 8 0 0 1-.6 1.4Z"/></svg></span>
-    <span class="nav-label">Réglages</span>
+  <button data-t="more" aria-label="Plus de pages">
+    <span class="nav-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/></svg></span>
+    <span class="nav-label">Plus</span>
   </button>
 </nav>
 
@@ -296,6 +293,7 @@ const imgSrc = g => g.imgData || g.img || 'trail1.jpg';
 
 /* vélotaf : trajet marqué dans Strava, ou sortie vélo courte (hors gravel/VTT) */
 const isCommute = a => grp(a.type) === 'ride' && (a.commute || (!/Gravel|Mountain|Virtual/i.test(a.type) && a.dist / 1000 <= (prof.commuteKm || 36)));
+const isEbike = a => /^(e-?bike|e-?mountainbike|electricbike|ebikeride)$/i.test(String(a.type||'').replace(/\s/g,'')) || /vélo électrique|\bvae\b/i.test(String(a.type||''));
 const outing = a => grp(a.type) === 'ride' && !isCommute(a) && a.time >= 2700;
 const weekRuns = t => acts.filter(a => grp(a.type) === 'run' && weekStart(a.date) === t).sort((a, b) => a.date.localeCompare(b.date));
 const runKmWeek = t => weekRuns(t).reduce((s, a) => s + a.dist, 0) / 1000;
@@ -576,6 +574,7 @@ function showSent() {
 function resetAna() { if (!confirm('Effacer les analyses détaillées et les relancer ?')) return; detail = {}; save(KD, detail); anaStat() }
 function loadOf(a) {
   const d = detail[a.id]; if (d && d.load != null) return d.load;
+  if (isEbike(a)) return 0;
   const m = a.time / 60; if (a.hr) return Math.round(m * ZW[zoneOf(a.hr)]);
   return Math.round(m * (grp(a.type) === 'run' ? 2 : isCommute(a) ? 1 : 1.5));
 }
@@ -1006,6 +1005,8 @@ function coachContext() {
   L.push('Course réalisée (km par semaine, de la plus ancienne à la dernière semaine complète) : ' + [4, 3, 2, 1].map(i => runKmWeek(cur - i * WK).toFixed(0)).join(', ') + '. Cette semaine : ' + runKmWeek(cur).toFixed(0) + ' km.');
   L.push(physioText());
   L.push('Objectif complémentaire : intégrer du renforcement progressif 1 à 2 fois par semaine pour mieux tolérer les descentes de trail (quadriceps en excentrique, fessiers, mollets, gainage), sans placer de séance dure avant la sortie longue ni pendant l’affûtage/récupération.');
+  L.push('Vélotaf classique : il compte dans la fatigue et la récupération, même sans être une séance structurée. VAE exclus des estimations de charge.');
+  L.push('Vélotaf (km et minutes par semaine, 4 dernières semaines complètes) : ' + [4,3,2,1].map(i => { const w=cur-i*WK, l=acts.filter(a => isCommute(a) && !isEbike(a) && weekStart(a.date)===w); return (l.reduce((n,a)=>n+(+a.dist||0),0)/1000).toFixed(0)+' km / '+Math.round(l.reduce((n,a)=>n+(+a.time||0),0)/60)+' min'; }).join(' ; ') + '.');
   L.push('Vélo hors vélotaf (minutes) sur les 4 dernières semaines : ' + [4, 3, 2, 1].map(i => Math.round(bikeMinWeek(cur - i * WK))).join(', ') + '.');
   if (plan) plan.weeks.filter(w => w.t >= cur).slice(0, 8).forEach(w => { const runs = assignDays(w).filter(r => r.iso && r.iso >= todayIso()).map(r => r.iso + ' ' + r.t + ' ' + (r.race ? r.txt : r.km + ' km') + (r.done ? ' (fait)' : '')); const other = (Array.isArray(w.coachSessions) ? w.coachSessions : []).filter(x => x.date >= todayIso()).map(x => x.date + ' ' + x.title + ' (' + x.sport + ')' + (x.durationMin ? ' ' + x.durationMin + ' min' : '') + (x.distanceKm ? ' ' + x.distanceKm + ' km' : '')); L.push('Semaine du ' + isoOf(w.t) + ' : ' + w.phase + ', ' + w.vol + ' km. Séances : ' + runs.concat(other).join(' | ')); });
   const fo = offs.filter(d => d >= todayIso()); if (fo.length) L.push('Jours off déjà posés : ' + fo.join(', ') + '.');
@@ -1651,7 +1652,7 @@ function progressWeeksData(n) {
     const runs=week.filter(a=>grp(a.type)==='run');
     // Inclure le vélotaf classique : il contribue au volume et à la fatigue.
     // Les activités VAE/E-Bike ne sont pas des sorties vélo classiques.
-    const rides=week.filter(a=>grp(a.type)==='ride' && !/ebike|e-bike|vélo électrique|vae/i.test((a.type||'')+' '+(a.name||'')));
+    const rides=week.filter(a=>grp(a.type)==='ride' && !isEbike(a));
     const commutes=rides.filter(isCommute);
     const leisure=rides.filter(a=>!isCommute(a));
     const sum=(a,k)=>a.reduce((v,x)=>v+(Number(x[k])||0),0);
@@ -1706,6 +1707,19 @@ function vProgress(){
   html+=kpi('Sortie la plus longue',Math.max(0,...past.map(x=>x.longKm)).toFixed(1)+' km','Course à pied');
   html+=kpi('Temps total',fmtH(sum(past,'runSec')+sum(past,'rideSec')),'Course + vélo, vélotaf inclus');
   html+='</div></div>';
+  const cutoff7=Date.now()-7*DAY, cutoff28=Date.now()-28*DAY;
+  const validFatigue=acts.filter(a=>a.date && !isEbike(a) && !String(a.id).startsWith('demo'));
+  const load7=validFatigue.filter(a=>Date.parse(a.date)>=cutoff7).reduce((v,a)=>v+loadOf(a),0);
+  const load28=validFatigue.filter(a=>Date.parse(a.date)>=cutoff28).reduce((v,a)=>v+loadOf(a),0);
+  const commute7=validFatigue.filter(a=>isCommute(a) && Date.parse(a.date)>=cutoff7);
+  const commuteLoad=commute7.reduce((v,a)=>v+loadOf(a),0);
+  const ref7=load28/4,ratio=ref7>0?load7/ref7:null;
+  html+='<div class="card"><h2>Charge et fatigue · 7 derniers jours</h2><div class="prog-grid">'+
+    kpi('Charge récente',Math.round(load7)+' pts','7 jours glissants')+
+    kpi('Dont vélotaf',Math.round(commuteLoad)+' pts',commute7.length+' trajets · '+(commute7.reduce((v,a)=>v+(+a.dist||0),0)/1000).toFixed(0)+' km')+
+    kpi('Référence',Math.round(ref7)+' pts / 7 j','Moyenne des 28 derniers jours')+
+    kpi('Rapport récent / référence',ratio===null?'—':ratio.toFixed(2),'Indicateur descriptif, pas un diagnostic')+'</div>'+
+    '<p class="fatigue-note">Charge estimée à partir de la durée et de la FC lorsqu’elle est disponible. Sans FC : vélotaf ×1 pt/min, autre vélo ×1,5, course ×2. Le vélotaf compte, le VAE est exclu. Les points ne mesurent pas directement la fatigue ressentie : sommeil, douleurs et sensations restent essentiels.</p></div>';
   html+='<div class="card"><h2>Volume de course · km / semaine</h2>'+progChart(rows,'runKm','var(--run)','km de course')+'</div>';
   html+='<div class="card"><h2>Sortie longue · km / semaine</h2>'+progChart(rows,'longKm','var(--ok)','km de la plus longue sortie')+'</div>';
   html+='<div class="card"><h2>Vélo total · km / semaine</h2>'+progChart(rows,'rideKm','var(--ride)','km de vélo')+
@@ -1782,10 +1796,15 @@ function vCfg() {
     '<div class="card"><h2>Autres</h2><button class="b alt" onclick="demo()">Charger des données de démo</button><button class="b alt" onclick="wipe()">Tout effacer</button></div>' +
     '<div class="card"><div id="log"></div></div>';
 }
+function vMore(){
+  const items=[['acts','Activités','Historique Strava et statistiques'],['gear','Matériel','Chaussures, vélos et équipements'],['cfg','Réglages','Synchronisation, analyses et sauvegardes']];
+  return '<div class="card"><h2>Plus de pages</h2><p class="prog-note">Accès aux rubriques secondaires, sans surcharger la barre de navigation sur iPhone.</p><div class="more-menu">'+items.map(([id,title,sub])=>'<button class="more-link" onclick="goTab(\''+id+'\')"><span><strong>'+title+'</strong><small>'+sub+'</small></span><span aria-hidden="true">›</span></button>').join('')+'</div></div>';
+}
+function goTab(t){tab=t;paint();window.scrollTo&&window.scrollTo(0,0)}
 function paintStatus() { const s = $('#status'); if (s) s.textContent = acts.length ? acts.length + ' activités' + (cfg.last ? ' · synchro ' + new Date(cfg.last).toLocaleString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '') : 'Aucune donnée' }
 function paint() {
-  document.querySelectorAll('nav button').forEach(b => b.classList.toggle('on', b.dataset.t === tab));
-  $('#view').innerHTML = tab === 'home' ? vHome() : tab === 'plan' ? vPlan() : tab === 'coach' ? coachPage() : tab === 'progress' ? vProgress() : tab === 'acts' ? vActs() : tab === 'gear' ? vGear() : vCfg();
+  document.querySelectorAll('nav button').forEach(b => b.classList.toggle('on', b.dataset.t === tab || (b.dataset.t === 'more' && ['acts','gear','cfg'].includes(tab))));
+  $('#view').innerHTML = tab === 'home' ? vHome() : tab === 'plan' ? vPlan() : tab === 'coach' ? coachPage() : tab === 'progress' ? vProgress() : tab === 'acts' ? vActs() : tab === 'gear' ? vGear() : tab === 'more' ? vMore() : vCfg();
   paintStatus();
   if (tab === 'plan' && plan) { const sc = $('#psc'); if (sc) { const i = plan.weeks.findIndex(w => w.t >= curWeek()); sc.scrollLeft = Math.max(0, i * 18 - 80) } }
   if (tab === 'coach') { const input = $('#cin'); if (input && chatBusy) input.blur(); }
@@ -1803,7 +1822,7 @@ function migrate() {
     save('bt_mig4', true);
   }
 }
-document.querySelectorAll('nav button').forEach(b => b.onclick = () => { tab = b.dataset.t; paint(); window.scrollTo && window.scrollTo(0, 0) });
+document.querySelectorAll('nav button').forEach(b => b.onclick = () => goTab(b.dataset.t));
 migrate(); syncGearsFromActs(); persistChat(); paint();
 if (cfg.refresh && cfg.id && cfg.secret && (!cfg.last || Date.now() - cfg.last > 6 * 36e5)) sync();
 </script>
