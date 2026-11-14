@@ -174,6 +174,18 @@ nav button .nav-label{font-size:9px;letter-spacing:0}
 .archive-item button{width:auto;margin:0;padding:7px 9px;font-size:12px}
 @media(min-width:700px){.coach-compose{bottom:12px}}
 
+
+/* Progression MENDI */
+.prog-switch{display:flex;gap:8px;margin:10px 0}
+.prog-switch button{flex:1;border:1px solid var(--line);background:var(--card2);color:var(--mut);border-radius:9px;padding:10px;font:600 13px system-ui;cursor:pointer}
+.prog-switch button.on{border-color:var(--run);background:rgba(255,113,56,.15);color:var(--txt)}
+.prog-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
+.prog-kpi{background:rgba(255,255,255,.025);border:1px solid var(--line);border-radius:11px;padding:11px;min-width:0}
+.prog-kpi span{font-size:11px;color:var(--mut);display:block}
+.prog-kpi b{font-size:21px;display:block;letter-spacing:-.03em;margin:4px 0}
+.prog-kpi small{font-size:11px;display:block}
+.prog-note{font-size:12px;color:var(--mut);line-height:1.5;margin:9px 0 0}
+.prog-svg{width:100%;height:auto;display:block}
 </style>
 </head>
 <body>
@@ -194,6 +206,10 @@ nav button .nav-label{font-size:9px;letter-spacing:0}
   <button data-t="coach" aria-label="Coach MENDI">
     <span class="nav-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a7 7 0 0 0-4 12.7V19h8v-3.3A7 7 0 0 0 12 3Z"/><path d="M9 22h6M9 16h6M9.5 9.5l1.5 1.5 3-3"/></svg></span>
     <span class="nav-label">Coach</span>
+  </button>
+  <button data-t="progress" aria-label="Progression">
+    <span class="nav-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 19V5M3 19h18"/><path d="m6 15 4-4 3 2 6-7"/></svg></span>
+    <span class="nav-label">Progression</span>
   </button>
   <button data-t="acts" aria-label="Activités">
     <span class="nav-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h3l2.2-6 4.1 12 2.5-7 1.5 3H21"/></svg></span>
@@ -216,7 +232,7 @@ const load = (k, d) => { try { const v = JSON.parse(localStorage.getItem(k)); re
 const save = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)) } catch (e) { log('Stockage local plein ou indisponible.') } };
 let cfg = load(KC, {}), acts = load(KA, []), goals = load(KG, null), plan = load(KP, null), prof = load(KF, {}), absences = load(KB, null),
   offs = load(KO, []), feels = load(KR, []), maint = load(KM, []), gears = load(KS, []), chat = load(KH, []), adj = load(KJ, {}), sessEdits = load(KX, {});
-let tab = 'home', filt = 'all', chatBusy = false; const openK = {}, imgSel = {}, imgTmp = {};
+let tab = 'home', filt = 'all', chatBusy = false, progressWeeks = 12; const openK = {}, imgSel = {}, imgTmp = {};
 let chatThreads = load(KTH, []), archivedChats = load(KAH, []), activeChatId = load(KAC, '');
 // Migration de l'ancien historique unique vers une conversation active indépendante.
 if (!chatThreads.length) {
@@ -1625,6 +1641,84 @@ function actsChart() {
   });
   return '<svg viewBox="0 0 ' + W + ' ' + (H + 4) + '" width="100%"><text x="0" y="12" fill="var(--mut)" font-size="12">max ' + max.toFixed(1) + ' h/sem.</text>' + s + '</svg>';
 }
+
+/* ---------- Tableau de bord de progression ---------- */
+function progressWeeksData(n) {
+  const cur=curWeek(), out=[];
+  for(let i=n-1;i>=0;i--){
+    const t=cur-i*WK;
+    const week=acts.filter(a=>a.date && weekStart(a.date)===t);
+    const runs=week.filter(a=>grp(a.type)==='run');
+    const rides=week.filter(a=>grp(a.type)==='ride' && !isCommute(a));
+    const sum=(a,k)=>a.reduce((v,x)=>v+(Number(x[k])||0),0);
+    const drifts=runs.map(a=>detail[String(a.id)]).filter(d=>d && Number.isFinite(Number(d.cardiacDriftPct)) && d.cardiacDriftPct!==undefined && d.cardiacDriftPct!==null);
+    out.push({t,runs,runKm:sum(runs,'dist')/1000,rideKm:sum(rides,'dist')/1000,
+      runSec:sum(runs,'time'),rideSec:sum(rides,'time'),elev:sum(runs,'elev'),
+      longKm:Math.max(0,...runs.map(a=>(Number(a.dist)||0)/1000)),
+      drift:drifts.length?drifts.reduce((v,d)=>v+Number(d.cardiacDriftPct),0)/drifts.length:null,
+      driftN:drifts.length});
+  }
+  return out;
+}
+function progPace(seconds){
+  if(!(seconds>0) || !Number.isFinite(seconds))return '—';
+  const n=Math.round(seconds);return Math.floor(n/60)+':'+pad(n%60)+'/km';
+}
+function progChart(rows,key,color,unit){
+  const W=620,H=164,L=32,R=8,T=15,B=28, ph=H-T-B,pw=W-L-R;
+  const values=rows.map(x=>Math.max(0,Number(x[key])||0)), max=Math.max(1,...values)*1.12,bw=pw/rows.length;
+  let svg='';
+  [0,.5,1].forEach(f=>{const y=T+ph*(1-f);svg+='<line x1="'+L+'" y1="'+y+'" x2="'+(W-R)+'" y2="'+y+'" stroke="var(--line)"/><text x="'+(L-5)+'" y="'+(y+4)+'" text-anchor="end" font-size="10" fill="var(--mut)">'+Math.round(max*f)+'</text>'});
+  values.forEach((v,i)=>{const h=v/max*ph,x=L+i*bw+bw*.16;
+    svg+='<rect x="'+x+'" y="'+(T+ph-h)+'" width="'+(bw*.68)+'" height="'+h+'" rx="3" fill="'+color+'"><title>Semaine du '+fmtS(rows[i].t)+' : '+v.toFixed(1)+' '+unit+'</title></rect>';
+    if(i%Math.max(1,Math.ceil(rows.length/6))===0 || i===rows.length-1)svg+='<text x="'+(L+i*bw+bw/2)+'" y="'+(H-5)+'" font-size="10" text-anchor="middle" fill="var(--mut)">'+fmtS(rows[i].t)+'</text>';
+  });
+  return '<svg class="prog-svg" viewBox="0 0 '+W+' '+H+'" role="img" aria-label="'+esc(unit)+' par semaine">'+svg+'</svg>';
+}
+function progMatchedPace(weeks){
+  const past=weeks.slice(0,-1), half=Math.floor(past.length/2), a=past.slice(0,half), b=past.slice(half);
+  // Seules les sorties relativement plates, avec FC et temps de déplacement, sont comparées.
+  const valid=w=>w.flatMap(x=>x.runs).filter(x=>x.hr>=100 && x.hr<=195 && x.dist>=5000 && x.dist<=25000 && x.time>0 && x.elev/Math.max(1,x.dist/1000)<=15 && x.time/x.dist*1000>=180 && x.time/x.dist*1000<=720);
+  const A=valid(a),B=valid(b), bucket=x=>Math.floor(Number(x.hr)/5)*5;
+  const bands=[...new Set(A.map(bucket))].filter(k=>B.some(x=>bucket(x)===k)).sort((x,y)=>x-y);
+  const candidates=bands.map(k=>({k,old:A.filter(x=>bucket(x)===k),recent:B.filter(x=>bucket(x)===k)})).filter(x=>x.old.length>=2 && x.recent.length>=2).sort((x,y)=>Math.min(y.old.length,y.recent.length)-Math.min(x.old.length,x.recent.length));
+  if(!candidates.length)return {ok:false,count:A.length+B.length};
+  const c=candidates[0],pace=l=>l.reduce((v,x)=>v+x.time,0)/(l.reduce((v,x)=>v+x.dist,0)/1000);
+  return {ok:true,band:c.k,old:pace(c.old),recent:pace(c.recent),n1:c.old.length,n2:c.recent.length};
+}
+function vProgress(){
+  if(!acts.length)return '<div class="card"><h2>Progression</h2><p>Aucune activité enregistrée. Synchronisez Strava ou importez votre historique dans Réglages.</p></div>';
+  const rows=progressWeeksData(progressWeeks), past=rows.slice(0,-1), half=Math.floor(past.length/2), old=past.slice(0,half), recent=past.slice(half);
+  const sum=(list,key)=>list.reduce((v,x)=>v+x[key],0), avg=(list,key)=>list.length?sum(list,key)/list.length:0;
+  const kpi=(title,value,sub,cls='')=>'<div class="prog-kpi"><span>'+title+'</span><b class="'+cls+'">'+value+'</b><small>'+sub+'</small></div>';
+  const matched=progMatchedPace(rows), drifts=past.filter(w=>w.drift!==null), driftN=sum(past,'driftN');
+  let html='<div class="card"><h2>Progression · '+progressWeeks+' semaines</h2><div class="prog-switch"><button class="'+(progressWeeks===6?'on':'')+'" onclick="progressWeeks=6;paint()">6 semaines</button><button class="'+(progressWeeks===12?'on':'')+'" onclick="progressWeeks=12;paint()">12 semaines</button></div><p class="prog-note">Les graphiques incluent la semaine en cours ; les bilans et comparaisons portent uniquement sur les semaines terminées.</p></div>';
+  html+='<div class="card"><h2>Vue d’ensemble</h2><div class="prog-grid">';
+  html+=kpi('Course à pied',sum(past,'runKm').toFixed(1)+' km',avg(past,'runKm').toFixed(1)+' km / semaine','run');
+  html+=kpi('Vélo hors vélotaf',sum(past,'rideKm').toFixed(0)+' km',fmtH(sum(past,'rideSec'))+' cumulées','ride');
+  html+=kpi('Sortie la plus longue',Math.max(0,...past.map(x=>x.longKm)).toFixed(1)+' km','Course à pied');
+  html+=kpi('Temps total',fmtH(sum(past,'runSec')+sum(past,'rideSec')),'Course + vélo hors vélotaf');
+  html+='</div></div>';
+  html+='<div class="card"><h2>Volume de course · km / semaine</h2>'+progChart(rows,'runKm','var(--run)','km de course')+'</div>';
+  html+='<div class="card"><h2>Sortie longue · km / semaine</h2>'+progChart(rows,'longKm','var(--ok)','km de la plus longue sortie')+'</div>';
+  html+='<div class="card"><h2>Vélo hors vélotaf · km / semaine</h2>'+progChart(rows,'rideKm','var(--ride)','km de vélo')+'<p class="prog-note">Le vélotaf est exclu selon les règles de classification actuelles de MENDI.</p></div>';
+  html+='<div class="card"><h2>Allure à fréquence cardiaque comparable</h2>';
+  if(matched.ok){const d=matched.recent-matched.old;
+    html+='<div class="prog-grid">'+kpi('Première période',progPace(matched.old),matched.n1+' sorties')+kpi('Période récente',progPace(matched.recent),matched.n2+' sorties')+'</div>';
+    html+='<p class="prog-note">FC moyenne dans la tranche '+matched.band+'–'+(matched.band+4)+' bpm : '+(Math.abs(d)<1?'allure quasi stable':d<0?'environ '+Math.abs(Math.round(d))+' s/km plus rapide':'environ '+Math.abs(Math.round(d))+' s/km plus lente')+'.</p>';
+  }else html+='<p>Pas assez de sorties comparables pour établir une tendance fiable.</p>';
+  html+='<p class="prog-note">Critères : au moins 2 sorties par période dans la même tranche de FC de 5 bpm, 5 à 25 km, D+ ≤ 15 m/km. L’allure reste sensible au terrain, à la météo, aux pauses et au type de séance : c’est un indicateur, pas une preuve de progression physiologique.</p></div>';
+  html+='<div class="card"><h2>Dérive cardiaque</h2>';
+  if(driftN)html+='<div class="prog-grid">'+kpi('Moyenne des semaines analysées',(drifts.reduce((v,x)=>v+x.drift*x.driftN,0)/driftN).toFixed(1)+' %',driftN+' sorties analysées')+kpi('Semaines documentées',drifts.length+'/'+past.length,'avec dérive disponible')+'</div>';
+  else html+='<p class="prog-note">Aucune dérive calculée pour cette période. Dans Réglages → Données détaillées pour le coach, lancez « Analyser mes sorties ».</p>';
+  html+='<p class="prog-note">La dérive est issue des analyses détaillées Strava lorsqu’elles existent. Elle ne doit pas être interprétée isolément.</p></div>';
+  html+='<div class="card"><h2>Comparaison des deux périodes</h2>';
+  html+='<div class="row"><div><b>Volume hebdomadaire de course</b><div class="m">Moyenne des semaines terminées</div></div><div class="r">'+avg(old,'runKm').toFixed(1)+' → '+avg(recent,'runKm').toFixed(1)+' km</div></div>';
+  html+='<div class="row"><div><b>Sortie la plus longue</b><div class="m">Maximum dans chaque période</div></div><div class="r">'+Math.max(0,...old.map(x=>x.longKm)).toFixed(1)+' → '+Math.max(0,...recent.map(x=>x.longKm)).toFixed(1)+' km</div></div>';
+  html+='<p class="prog-note">Comparaison descriptive, sans jugement automatique sur la charge ou la récupération.</p></div>';
+  return html;
+}
+
 function vActs() {
   if (!acts.length) return '<div class="card">Aucune activité. Allez dans <b>Réglages</b> pour synchroniser Strava, importer un CSV ou charger la démo.</div>';
   const last = acts.filter(a => Date.now() - Date.parse(a.date) <= 28 * DAY);
@@ -1681,7 +1775,7 @@ function vCfg() {
 function paintStatus() { const s = $('#status'); if (s) s.textContent = acts.length ? acts.length + ' activités' + (cfg.last ? ' · synchro ' + new Date(cfg.last).toLocaleString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '') : 'Aucune donnée' }
 function paint() {
   document.querySelectorAll('nav button').forEach(b => b.classList.toggle('on', b.dataset.t === tab));
-  $('#view').innerHTML = tab === 'home' ? vHome() : tab === 'plan' ? vPlan() : tab === 'coach' ? coachPage() : tab === 'acts' ? vActs() : tab === 'gear' ? vGear() : vCfg();
+  $('#view').innerHTML = tab === 'home' ? vHome() : tab === 'plan' ? vPlan() : tab === 'coach' ? coachPage() : tab === 'progress' ? vProgress() : tab === 'acts' ? vActs() : tab === 'gear' ? vGear() : vCfg();
   paintStatus();
   if (tab === 'plan' && plan) { const sc = $('#psc'); if (sc) { const i = plan.weeks.findIndex(w => w.t >= curWeek()); sc.scrollLeft = Math.max(0, i * 18 - 80) } }
   if (tab === 'coach') { const input = $('#cin'); if (input && chatBusy) input.blur(); }
