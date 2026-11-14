@@ -1649,11 +1649,18 @@ function progressWeeksData(n) {
     const t=cur-i*WK;
     const week=acts.filter(a=>a.date && weekStart(a.date)===t);
     const runs=week.filter(a=>grp(a.type)==='run');
-    const rides=week.filter(a=>grp(a.type)==='ride' && !isCommute(a));
+    // Inclure le vélotaf classique : il contribue au volume et à la fatigue.
+    // Les activités VAE/E-Bike ne sont pas des sorties vélo classiques.
+    const rides=week.filter(a=>grp(a.type)==='ride' && !/ebike|e-bike|vélo électrique|vae/i.test((a.type||'')+' '+(a.name||'')));
+    const commutes=rides.filter(isCommute);
+    const leisure=rides.filter(a=>!isCommute(a));
     const sum=(a,k)=>a.reduce((v,x)=>v+(Number(x[k])||0),0);
     const drifts=runs.map(a=>detail[String(a.id)]).filter(d=>d && Number.isFinite(Number(d.cardiacDriftPct)) && d.cardiacDriftPct!==undefined && d.cardiacDriftPct!==null);
     out.push({t,runs,runKm:sum(runs,'dist')/1000,rideKm:sum(rides,'dist')/1000,
-      runSec:sum(runs,'time'),rideSec:sum(rides,'time'),elev:sum(runs,'elev'),
+      runSec:sum(runs,'time'),rideSec:sum(rides,'time'),
+      commuteKm:sum(commutes,'dist')/1000,commuteSec:sum(commutes,'time'),
+      leisureKm:sum(leisure,'dist')/1000,leisureSec:sum(leisure,'time'),
+      elev:sum(runs,'elev'),
       longKm:Math.max(0,...runs.map(a=>(Number(a.dist)||0)/1000)),
       drift:drifts.length?drifts.reduce((v,d)=>v+Number(d.cardiacDriftPct),0)/drifts.length:null,
       driftN:drifts.length});
@@ -1695,13 +1702,16 @@ function vProgress(){
   let html='<div class="card"><h2>Progression · '+progressWeeks+' semaines</h2><div class="prog-switch"><button class="'+(progressWeeks===6?'on':'')+'" onclick="progressWeeks=6;paint()">6 semaines</button><button class="'+(progressWeeks===12?'on':'')+'" onclick="progressWeeks=12;paint()">12 semaines</button></div><p class="prog-note">Les graphiques incluent la semaine en cours ; les bilans et comparaisons portent uniquement sur les semaines terminées.</p></div>';
   html+='<div class="card"><h2>Vue d’ensemble</h2><div class="prog-grid">';
   html+=kpi('Course à pied',sum(past,'runKm').toFixed(1)+' km',avg(past,'runKm').toFixed(1)+' km / semaine','run');
-  html+=kpi('Vélo hors vélotaf',sum(past,'rideKm').toFixed(0)+' km',fmtH(sum(past,'rideSec'))+' cumulées','ride');
+  html+=kpi('Vélo total',sum(past,'rideKm').toFixed(0)+' km',fmtH(sum(past,'rideSec'))+' · vélotaf inclus','ride');
   html+=kpi('Sortie la plus longue',Math.max(0,...past.map(x=>x.longKm)).toFixed(1)+' km','Course à pied');
-  html+=kpi('Temps total',fmtH(sum(past,'runSec')+sum(past,'rideSec')),'Course + vélo hors vélotaf');
+  html+=kpi('Temps total',fmtH(sum(past,'runSec')+sum(past,'rideSec')),'Course + vélo, vélotaf inclus');
   html+='</div></div>';
   html+='<div class="card"><h2>Volume de course · km / semaine</h2>'+progChart(rows,'runKm','var(--run)','km de course')+'</div>';
   html+='<div class="card"><h2>Sortie longue · km / semaine</h2>'+progChart(rows,'longKm','var(--ok)','km de la plus longue sortie')+'</div>';
-  html+='<div class="card"><h2>Vélo hors vélotaf · km / semaine</h2>'+progChart(rows,'rideKm','var(--ride)','km de vélo')+'<p class="prog-note">Le vélotaf est exclu selon les règles de classification actuelles de MENDI.</p></div>';
+  html+='<div class="card"><h2>Vélo total · km / semaine</h2>'+progChart(rows,'rideKm','var(--ride)','km de vélo')+
+    '<div class="prog-grid">'+kpi('Dont vélotaf',sum(past,'commuteKm').toFixed(0)+' km',fmtH(sum(past,'commuteSec'))+' de trajet')+
+    kpi('Autres sorties vélo',sum(past,'leisureKm').toFixed(0)+' km',fmtH(sum(past,'leisureSec'))+' de vélo')+'</div>'+
+    '<p class="prog-note">Les trajets vélotaf classiques sont comptabilisés dans le volume et le temps d’activité. Les VAE restent exclus. La classification vélotaf utilise les règles déjà présentes dans MENDI.</p></div>';
   html+='<div class="card"><h2>Allure à fréquence cardiaque comparable</h2>';
   if(matched.ok){const d=matched.recent-matched.old;
     html+='<div class="prog-grid">'+kpi('Première période',progPace(matched.old),matched.n1+' sorties')+kpi('Période récente',progPace(matched.recent),matched.n2+' sorties')+'</div>';
