@@ -1428,7 +1428,7 @@ async function sendCoach(text) {
     while (msgs.length && msgs[0].role !== 'user') msgs.shift();
     const r = await fetch(cfg.aiEndpoint, { method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ system: COACH_SYS + COACH_DATA_SYS, context: coachContext(), program: coachProgramData(), messages: msgs }) });
+      body: JSON.stringify({ system: COACH_SYS + COACH_DATA_SYS, context: coachContext(), program: coachProgramData(), messages: msgs, modelChoice: ['luna','terra','sol'].includes(cfg.coachModel) ? cfg.coachModel : 'luna' }) });
     if (!r.ok) { const detail = (await r.text()).slice(0, 240); throw new Error('Relais OpenAI : HTTP ' + r.status + (detail ? ' · ' + detail : '')); }
     const j = await r.json();
     const p = parseCoach(j && (j.reply !== undefined || j.actions !== undefined) ? j : (j.text || ''));
@@ -1437,6 +1437,18 @@ async function sendCoach(text) {
     chat.push({ r: 'a', t: p.text, actions: p.actions, applied: [], programProposal: p.programProposal, programApplied: false });
   } catch (e) { chat.push({ r: 'a', t: 'Erreur : ' + netHint(e), actions: [], applied: [], err: true }) }
   chatBusy = false; persistChat(); paint();
+}
+function selectCoachModel(model){
+  if(!['luna','terra','sol'].includes(model)) return;
+  cfg.coachModel=model; save(KC,cfg); paint();
+}
+function coachModelName(){return ({luna:'Luna',terra:'Terra',sol:'Sol'})[['luna','terra','sol'].includes(cfg.coachModel)?cfg.coachModel:'luna'];}
+function vAIModels(){
+  const current=['luna','terra','sol'].includes(cfg.coachModel)?cfg.coachModel:'luna';
+  const options=[['luna','Luna','Questions, review hebdomadaire et modifications ponctuelles · économique'],['terra','Terra','Création et refonte de programmes · plus coûteux'],['sol','Sol','Planification approfondie · coût le plus élevé']];
+  return '<div class="card"><h2>Intelligence artificielle</h2><p class="m">Choisissez le modèle utilisé pour tous les appels du coach, y compris les corrections automatiques. Le choix est conservé sur cet appareil.</p>'+
+    options.map(o=>'<label style="display:flex;align-items:flex-start;gap:10px;padding:12px;border:1px solid var(--line);border-radius:12px;margin:8px 0;cursor:pointer"><input type="radio" name="coachmodel" style="width:auto;margin:3px 0 0" value="'+o[0]+'" '+(current===o[0]?'checked':'')+' onchange="selectCoachModel(this.value)"><span><b>'+o[1]+(o[0]==='luna'?' · par défaut':'')+'</b><small class="m" style="display:block;margin-top:3px">'+o[2]+'</small></span></label>').join('')+
+    '<p class="m">Aucun changement automatique de modèle : une demande de programme complet reste sur le modèle choisi. Luna peut nécessiter plus de tentatives pour les programmes longs.</p><button class="b alt" onclick="goTab(\'cfg\')">Retour aux réglages</button></div>';
 }
 function saveAI() {
   const endpoint = $('#aiendpoint').value.trim().replace(/\/$/, '');
@@ -1456,6 +1468,7 @@ function feelCard() {
 }
 function coachPage() {
   let h = '<section class="coach-hero"><div style="display:flex;align-items:center;gap:10px"><div style="width:42px;height:42px;border-radius:14px;background:rgba(85,199,242,.13);display:grid;place-items:center"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--ride)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a7 7 0 0 0-4 12.7V19h8v-3.3A7 7 0 0 0 12 3Z"/><path d="M9 22h6M9 16h6"/></svg></div><div><h2 style="margin:0;color:var(--txt);font-size:17px;letter-spacing:0;text-transform:none">Coach MENDI</h2><div class="m">Votre partenaire trail, vélo et renforcement</div></div></div>';
+  h += '<div style="margin-top:10px;display:flex;align-items:center;justify-content:space-between;gap:10px"><span class="chip">Modèle actif : <b>'+coachModelName()+'</b></span><button class="b alt" style="margin:0" onclick="goTab(\'ai-models\')">Changer</button></div>';
   h += '<p class="m" style="margin:12px 0 0">Le coach connaît vos objectifs et votre préparation complète. Il peut reconstruire plusieurs mois d’entraînement avec vous. Rien ne change sans votre validation.</p>';
   h += '<div class="coach-shortcuts">' +
     '<button onclick="quickCoach(\'Fais le point sur ma semaine et mes prochaines séances.\')">▦ &nbsp;Faire le point sur ma semaine</button>' +
@@ -1463,7 +1476,7 @@ function coachPage() {
     '<button onclick="quickCoach(\'Propose-moi une séance de renforcement adaptée à ma préparation trail et à ma récupération.\')">✚ &nbsp;Renforcement musculaire</button>' +
     '<button onclick="quickCoach(\'Aide-moi à préparer mon prochain trail en tenant compte de mon programme.\')">⌁ &nbsp;Préparer mon trail</button></div></section>';
   h += '<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><h2 style="margin:0">Discussion en cours</h2><span class="chip">' + chat.length + ' messages</span></div>';
-  h += '<div class="chat-tools" style="margin-top:10px"><button class="b alt" onclick="newChat()">＋ Nouvelle discussion</button><button class="b alt" onclick="archiveOnly()">Archiver</button><button class="b alt" onclick="clearChat()">Vider</button></div>' + '<button class="b" style="width:100%;margin-top:10px" onclick="requestPlanChange()" ' + (chatBusy || !cfg.aiEndpoint ? 'disabled' : '') + '>✓ Construire / revoir tout mon programme</button><small class="m" style="display:block;margin-top:5px">Le coach prépare une nouvelle version complète à partir de vos objectifs, de vos activités et de notre discussion. Rien ne change sans votre validation.</small>';
+  h += '<div class="chat-tools" style="margin-top:10px"><button class="b alt" onclick="newChat()">＋ Nouvelle discussion</button><button class="b alt" onclick="archiveOnly()">Archiver</button><button class="b alt" onclick="clearChat()">Vider</button></div>' + '<button class="b" style="width:100%;margin-top:10px" onclick="requestPlanChange()" ' + (chatBusy || !cfg.aiEndpoint ? 'disabled' : '') + '>✓ Construire / revoir tout mon programme</button><small class="m" style="display:block;margin-top:5px">Modèle sélectionné : '+coachModelName()+'. Les programmes longs peuvent être coûteux ou incomplets avec Luna. Le coach prépare une nouvelle version complète à partir de vos objectifs, de vos activités et de notre discussion. Rien ne change sans votre validation.</small>';
   if (!cfg.aiEndpoint) h += '<div class="adv warn" style="margin-top:12px">Le coach n’est pas connecté. Configurez l’adresse du relais OpenAI dans Réglages → Coach IA.</div>';
   if (!chat.length) h += '<div class="msg a" style="margin-top:14px">Bonjour ! Je peux vous aider à adapter votre préparation, analyser votre fatigue et équilibrer course, vélo et renforcement. Que souhaitez-vous travailler aujourd’hui ?</div>';
   h += '<div class="coach-messages" style="margin-top:12px">';
@@ -1912,7 +1925,7 @@ function setCommuteOverride(id,value){
 }
 function vCfg() {
   const au = startStats(true);
-  return det('c1', '<h2 style="margin:0">Connexion Strava ' + (cfg.refresh ? '<span class="ok">● connecté</span>' : '') + '</h2>',
+  return '<div class="card"><h2>Intelligence artificielle</h2><p class="m">Modèle du coach : <b>'+coachModelName()+'</b></p><button class="b alt" onclick="goTab(\'ai-models\')">Choisir le modèle IA</button></div>' + det('c1', '<h2 style="margin:0">Connexion Strava ' + (cfg.refresh ? '<span class="ok">● connecté</span>' : '') + '</h2>',
     '<div style="margin-top:10px"><div class="m" style="margin-bottom:8px">Sur iPhone, saisissez ces informations dans l’app ouverte depuis l’icône de l’écran d’accueil : elle a son propre stockage, distinct de Safari. Une seule fois suffit ensuite.</div>' +
     '<label>Client ID</label><input id="cid" inputmode="numeric" value="' + esc(cfg.id) + '">' +
     '<label>Client Secret</label><input id="csec" type="password" value="' + esc(cfg.secret) + '">' +
@@ -1987,8 +2000,8 @@ function goTab(t){tab=t;paint();window.scrollTo&&window.scrollTo(0,0)}
 function paintStatus() { const s = $('#status'); if (s) s.textContent = acts.length ? acts.length + ' activités' + (cfg.last ? ' · synchro ' + new Date(cfg.last).toLocaleString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '') : 'Aucune donnée' }
 function paint() {
   if(tab==='home' && !prof.profileSetup) { /* invitation non bloquante affichée ci-dessous */ }
-  document.querySelectorAll('nav button').forEach(b => b.classList.toggle('on', b.dataset.t === tab || (b.dataset.t === 'more' && ['profile','acts','gear','cfg','exercises'].includes(tab))));
-  $('#view').innerHTML = tab === 'home' ? vHome() : tab === 'plan' ? vPlan() : tab === 'coach' ? coachPage() : tab === 'progress' ? vProgress() : tab === 'acts' ? vActs() : tab === 'gear' ? vGear() : tab === 'exercises' ? vExercises() : tab === 'more' ? vMore() : tab === 'profile' ? vAthleteProfile() : vCfg();
+  document.querySelectorAll('nav button').forEach(b => b.classList.toggle('on', b.dataset.t === tab || (b.dataset.t === 'more' && ['profile','acts','gear','cfg','exercises','ai-models'].includes(tab))));
+  $('#view').innerHTML = tab === 'home' ? vHome() : tab === 'plan' ? vPlan() : tab === 'coach' ? coachPage() : tab === 'progress' ? vProgress() : tab === 'acts' ? vActs() : tab === 'gear' ? vGear() : tab === 'exercises' ? vExercises() : tab === 'ai-models' ? vAIModels() : tab === 'more' ? vMore() : tab === 'profile' ? vAthleteProfile() : vCfg();
   if(tab==='home' && !prof.profileSetup) $('#view').insertAdjacentHTML('afterbegin','<div class="card"><h2>Bienvenue sur MENDI</h2><p>Complétez votre profil sportif pour aider le coach à personnaliser votre programme. Vos données et votre plan actuels sont conservés.</p><button class="b" onclick="goTab(\'profile\')">Configurer mon profil</button></div>');
   paintStatus();
   if (tab === 'plan' && plan) { const sc = $('#psc'); if (sc) { const i = plan.weeks.findIndex(w => w.t >= curWeek()); sc.scrollLeft = Math.max(0, i * 18 - 80) } }
