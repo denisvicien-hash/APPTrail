@@ -200,7 +200,44 @@ nav button .nav-label{font-size:9px;letter-spacing:0}
 .exlib-card h3{margin:0 0 6px}.exlib-card p{margin:8px 0}
 .exlib-card a{display:inline-flex;padding:11px 13px;border-radius:9px;background:var(--run);color:#fff;text-decoration:none;font-weight:700;margin-top:8px}
 .exlib-video{margin-top:12px}.exlib-video iframe{display:block;width:100%;aspect-ratio:16/9;border:0;border-radius:10px;background:#111}.exlib-secondary{display:inline-block!important;background:transparent!important;color:var(--run)!important;padding:8px 0!important;font-weight:500!important;font-size:12px}
+
+/* MENDI : thèmes sélectionnables, sans bibliothèque supplémentaire */
+:root[data-mendi-theme="dark"]{color-scheme:dark}
+:root[data-mendi-theme="light"]{color-scheme:light;--bg:#f4f5f1;--card:#ffffff;--card2:#f0f3ee;--line:#d6ddd5;--txt:#1e2b26;--mut:#58685f;--run:#3e7652;--ride:#276f95;--ok:#257849;--warn:#9c6a0a;--ko:#b33c40;--k-base:#276f95;--k-spec:#b86730;--k-recup:#257849;--k-taper:#7961a8;--k-race:#a46a0c;--k-post:#718078}
+:root[data-mendi-theme="trail"]{color-scheme:dark;--bg:#202b25;--card:#2b3a30;--card2:#233128;--line:#4b6251;--txt:#f0f1e6;--mut:#b8c8b7;--run:#bcd59e;--ride:#8bc4c0;--ok:#a7d4a4;--warn:#e4c981;--ko:#f3a2a0;--k-base:#8bc4c0;--k-spec:#d6b37c;--k-recup:#a7d4a4;--k-taper:#c4b3e0;--k-race:#e4c981;--k-post:#b8c8b7}
+:root[data-mendi-theme="light"] body{background:radial-gradient(ellipse at 50% -18%,rgba(62,118,82,.09),transparent 42%),var(--bg)}
+:root[data-mendi-theme="trail"] body{background:radial-gradient(ellipse at 50% -18%,rgba(188,213,158,.09),transparent 42%),var(--bg)}
+:root[data-mendi-theme="light"] .card,:root[data-mendi-theme="trail"] .card{background:var(--card);border-color:var(--line);box-shadow:0 5px 18px rgba(0,0,0,.07)}
+:root[data-mendi-theme="light"] .card h2,:root[data-mendi-theme="trail"] .card h2{color:var(--mut)}
+:root[data-mendi-theme="light"] nav{background:rgba(250,251,248,.95);border-top-color:var(--line)}
+:root[data-mendi-theme="trail"] nav{background:rgba(26,37,30,.96);border-top-color:var(--line)}
+:root[data-mendi-theme="light"] nav button,:root[data-mendi-theme="trail"] nav button{color:var(--mut)}
+:root[data-mendi-theme="light"] nav button.on,:root[data-mendi-theme="trail"] nav button.on{color:var(--run)}
+:root[data-mendi-theme="light"] nav button.on .nav-icon,:root[data-mendi-theme="trail"] nav button.on .nav-icon{background:var(--card2);box-shadow:inset 0 0 0 1px var(--line)}
+:root[data-mendi-theme="light"] button.b,:root[data-mendi-theme="trail"] button.b{background:var(--run);border-color:var(--run);color:#fff;box-shadow:none}
+:root[data-mendi-theme="trail"] button.b{color:#1b2a20}
+:root[data-mendi-theme="light"] button.b.alt,:root[data-mendi-theme="trail"] button.b.alt{background:var(--card2);border-color:var(--line);color:var(--txt)}
+:root[data-mendi-theme="light"] .msg.u,:root[data-mendi-theme="trail"] .msg.u{background:var(--card2);border-color:var(--line)}
+:root[data-mendi-theme="light"] .msg.a,:root[data-mendi-theme="trail"] .msg.a,:root[data-mendi-theme="light"] .adv,:root[data-mendi-theme="trail"] .adv{background:var(--card);border-color:var(--line)}
+:root[data-mendi-theme="light"] .coach-hero,:root[data-mendi-theme="trail"] .coach-hero{background:var(--card);border-color:var(--line)}
+:root[data-mendi-theme="light"] .coach-compose,:root[data-mendi-theme="trail"] .coach-compose{background:var(--card);border-color:var(--line)}
+:root[data-mendi-theme="light"] .coach-compose input,:root[data-mendi-theme="trail"] .coach-compose input{background:var(--card2);border-color:var(--line)}
+:root[data-mendi-theme="light"] #sy,:root[data-mendi-theme="trail"] #sy{background:var(--card);border-color:var(--line)}
+:root[data-mendi-theme="light"] .goal-card,:root[data-mendi-theme="trail"] .goal-card{background:var(--card);border-color:var(--line)}
+:root[data-mendi-theme="light"] .dy.off,:root[data-mendi-theme="trail"] .dy.off{background:repeating-linear-gradient(45deg,var(--card2),var(--card2) 6px,var(--card) 6px,var(--card) 12px)}
+:root[data-mendi-theme="light"] .pill{color:#fff}
+:root[data-mendi-theme="trail"] .pill{color:#1b2a20}
+:root[data-mendi-theme="light"] .warn,:root[data-mendi-theme="trail"] .warn{background:var(--card2);border-color:var(--warn)}
+:root[data-mendi-theme="light"] .exlib-card,:root[data-mendi-theme="trail"] .exlib-card{background:var(--card2);border-color:var(--line)}
+:root[data-mendi-theme="light"] .exlib-card a{color:#fff}
+:root[data-mendi-theme="trail"] .exlib-card a{color:#1b2a20}
+:root[data-mendi-theme="light"] .prog-switch button.on,:root[data-mendi-theme="trail"] .prog-switch button.on{background:var(--card2)}
+.theme-choice{display:flex;align-items:center;gap:12px;border:1px solid var(--line);border-radius:12px;padding:12px;margin:9px 0;cursor:pointer;background:var(--card2)}
+.theme-choice input{width:auto;margin:0;accent-color:var(--run)}
+.theme-swatch{width:46px;height:34px;border-radius:8px;display:flex;align-items:center;justify-content:center;flex:none;border:1px solid rgba(128,128,128,.25)}
+.theme-swatch i{width:24px;height:15px;border-radius:4px;display:block}
 </style>
+<script>(function(){try{var c=JSON.parse(localStorage.getItem('bt_cfg')||'{}');var t=['dark','light','trail'].includes(c.appTheme)?c.appTheme:'dark';document.documentElement.dataset.mendiTheme=t;var m=document.querySelector('meta[name="theme-color"]');if(m)m.content=({dark:'#0a0c0f',light:'#f4f5f1',trail:'#202b25'})[t];}catch(e){document.documentElement.dataset.mendiTheme='dark'}})();</script>
 </head>
 <body>
 <header>
@@ -1443,6 +1480,25 @@ function selectCoachModel(model){
   cfg.coachModel=model; save(KC,cfg); paint();
 }
 function coachModelName(){return ({luna:'Luna',terra:'Terra',sol:'Sol'})[['luna','terra','sol'].includes(cfg.coachModel)?cfg.coachModel:'luna'];}
+function selectAppTheme(t){
+  if(!['dark','light','trail'].includes(t)) return;
+  cfg.appTheme=t;save(KC,cfg);
+  document.documentElement.dataset.mendiTheme=t;
+  const meta=document.querySelector('meta[name="theme-color"]');
+  if(meta) meta.content=({dark:'#0a0c0f',light:'#f4f5f1',trail:'#202b25'})[t];
+  paint();
+}
+function vAppearance(){
+  const current=['dark','light','trail'].includes(cfg.appTheme)?cfg.appTheme:'dark';
+  const themes=[
+    ['dark','Noir','Sombre classique','#17191c','#f97316'],
+    ['light','Blanc','Clair et minimaliste','#ffffff','#3e7652'],
+    ['trail','Vert trail','Vert forêt mat','#2b3a30','#bcd59e']
+  ];
+  return '<div class="card"><h2>Apparence</h2><p class="m">Choisissez les couleurs de MENDI. Le thème est enregistré sur cet appareil et ne modifie ni votre programme ni les réglages du coach.</p>'+
+    themes.map(t=>'<label class="theme-choice"><input type="radio" name="appTheme" value="'+t[0]+'" '+(current===t[0]?'checked':'')+' onchange="selectAppTheme(this.value)"><span class="theme-swatch" style="background:'+t[3]+'"><i style="background:'+t[4]+'"></i></span><span><b>'+t[1]+(t[0]==='dark'?' · par défaut':'')+'</b><small class="m" style="display:block">'+t[2]+'</small></span></label>').join('')+
+    '<button class="b alt" onclick="goTab(\'cfg\')">Retour aux réglages</button></div>';
+}
 function vAIModels(){
   const current=['luna','terra','sol'].includes(cfg.coachModel)?cfg.coachModel:'luna';
   const options=[['luna','Luna','Questions, review hebdomadaire et modifications ponctuelles · économique'],['terra','Terra','Création et refonte de programmes · plus coûteux'],['sol','Sol','Planification approfondie · coût le plus élevé']];
@@ -1925,7 +1981,7 @@ function setCommuteOverride(id,value){
 }
 function vCfg() {
   const au = startStats(true);
-  return '<div class="card"><h2>Intelligence artificielle</h2><p class="m">Modèle du coach : <b>'+coachModelName()+'</b></p><button class="b alt" onclick="goTab(\'ai-models\')">Choisir le modèle IA</button></div>' + det('c1', '<h2 style="margin:0">Connexion Strava ' + (cfg.refresh ? '<span class="ok">● connecté</span>' : '') + '</h2>',
+  return '<div class="card"><h2>Apparence</h2><p class="m">Thème actuel : <b>'+({dark:'Noir',light:'Blanc',trail:'Vert trail'})[cfg.appTheme||'dark']+'</b></p><button class="b alt" onclick="goTab(\'appearance\')">Choisir le thème</button></div>' + '<div class="card"><h2>Intelligence artificielle</h2><p class="m">Modèle du coach : <b>'+coachModelName()+'</b></p><button class="b alt" onclick="goTab(\'ai-models\')">Choisir le modèle IA</button></div>' + det('c1', '<h2 style="margin:0">Connexion Strava ' + (cfg.refresh ? '<span class="ok">● connecté</span>' : '') + '</h2>',
     '<div style="margin-top:10px"><div class="m" style="margin-bottom:8px">Sur iPhone, saisissez ces informations dans l’app ouverte depuis l’icône de l’écran d’accueil : elle a son propre stockage, distinct de Safari. Une seule fois suffit ensuite.</div>' +
     '<label>Client ID</label><input id="cid" inputmode="numeric" value="' + esc(cfg.id) + '">' +
     '<label>Client Secret</label><input id="csec" type="password" value="' + esc(cfg.secret) + '">' +
@@ -2000,8 +2056,8 @@ function goTab(t){tab=t;paint();window.scrollTo&&window.scrollTo(0,0)}
 function paintStatus() { const s = $('#status'); if (s) s.textContent = acts.length ? acts.length + ' activités' + (cfg.last ? ' · synchro ' + new Date(cfg.last).toLocaleString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '') : 'Aucune donnée' }
 function paint() {
   if(tab==='home' && !prof.profileSetup) { /* invitation non bloquante affichée ci-dessous */ }
-  document.querySelectorAll('nav button').forEach(b => b.classList.toggle('on', b.dataset.t === tab || (b.dataset.t === 'more' && ['profile','acts','gear','cfg','exercises','ai-models'].includes(tab))));
-  $('#view').innerHTML = tab === 'home' ? vHome() : tab === 'plan' ? vPlan() : tab === 'coach' ? coachPage() : tab === 'progress' ? vProgress() : tab === 'acts' ? vActs() : tab === 'gear' ? vGear() : tab === 'exercises' ? vExercises() : tab === 'ai-models' ? vAIModels() : tab === 'more' ? vMore() : tab === 'profile' ? vAthleteProfile() : vCfg();
+  document.querySelectorAll('nav button').forEach(b => b.classList.toggle('on', b.dataset.t === tab || (b.dataset.t === 'more' && ['profile','acts','gear','cfg','exercises','ai-models','appearance'].includes(tab))));
+  $('#view').innerHTML = tab === 'home' ? vHome() : tab === 'plan' ? vPlan() : tab === 'coach' ? coachPage() : tab === 'progress' ? vProgress() : tab === 'acts' ? vActs() : tab === 'gear' ? vGear() : tab === 'exercises' ? vExercises() : tab === 'ai-models' ? vAIModels() : tab === 'appearance' ? vAppearance() : tab === 'more' ? vMore() : tab === 'profile' ? vAthleteProfile() : vCfg();
   if(tab==='home' && !prof.profileSetup) $('#view').insertAdjacentHTML('afterbegin','<div class="card"><h2>Bienvenue sur MENDI</h2><p>Complétez votre profil sportif pour aider le coach à personnaliser votre programme. Vos données et votre plan actuels sont conservés.</p><button class="b" onclick="goTab(\'profile\')">Configurer mon profil</button></div>');
   paintStatus();
   if (tab === 'plan' && plan) { const sc = $('#psc'); if (sc) { const i = plan.weeks.findIndex(w => w.t >= curWeek()); sc.scrollLeft = Math.max(0, i * 18 - 80) } }
