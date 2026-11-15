@@ -1655,7 +1655,7 @@ function homeCurrentWeek(t, w) {
     h += weekStrip({t, runs:[], coachSessions:[]});
     h += '<div class="m" style="margin-top:8px">Aucune séance planifiée cette semaine.</div>';
   }
-  h += '<h3 style="margin:18px 0 8px">Séances réalisées (Strava)</h3>' + currentWeekActuals(t);
+  // Les activités réalisées sont déjà visibles dans les cases des jours (weekStrip).
   return h + '</div>';
 }
 function vHome() {
