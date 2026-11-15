@@ -1522,12 +1522,7 @@ function vAppearance(){
     ['light','Blanc','Clair et minimaliste','#ffffff','#3e7652'],
     ['trail','Vert trail','Vert forêt mat','#2b3a30','#bcd59e']
   ];
-  return '<div class="card"><h2>Réinitialisation du coach</h2><p class="m">Repartir de zéro sans supprimer votre programme, vos objectifs, votre profil ou vos activités Strava. Après la réinitialisation, le coach pourra toujours consulter et modifier le programme actuel.</p>' +
-    '<p class="m">Discussions : ' + (chatThreads.length + archivedChats.length) + ' · États de forme : ' + feels.length + '</p>' +
-    '<button class="b alt" onclick="resetCoachHistory()">Réinitialiser le tchat et ses archives</button>' +
-    '<button class="b alt" onclick="resetCoachFeelings()">Supprimer les états de forme et ressentis</button>' +
-    '<button class="b" onclick="resetCoachAll()">Réinitialiser tchat + ressentis</button>' +
-    '<small class="m" style="display:block;margin-top:8px">Attention : ces suppressions sont définitives sur cet appareil. Faites une sauvegarde si vous souhaitez conserver l’historique.</small></div>' + '<div class="card"><h2>Apparence</h2><p class="m">Choisissez les couleurs de MENDI. Le thème est enregistré sur cet appareil et ne modifie ni votre programme ni les réglages du coach.</p>'+
+  return '<div class="card"><h2>Apparence</h2><p class="m">Choisissez les couleurs de MENDI. Le thème est enregistré sur cet appareil et ne modifie ni votre programme ni les réglages du coach.</p>'+
     themes.map(t=>'<label class="theme-choice"><input type="radio" name="appTheme" value="'+t[0]+'" '+(current===t[0]?'checked':'')+' onchange="selectAppTheme(this.value)"><span class="theme-swatch" style="background:'+t[3]+'"><i style="background:'+t[4]+'"></i></span><span><b>'+t[1]+(t[0]==='dark'?' · par défaut':'')+'</b><small class="m" style="display:block">'+t[2]+'</small></span></label>').join('')+
     '<button class="b alt" onclick="goTab(\'cfg\')">Retour aux réglages</button></div>';
 }
@@ -2013,7 +2008,12 @@ function setCommuteOverride(id,value){
 }
 function vCfg() {
   const au = startStats(true);
-  return '<div class="card"><h2>Apparence</h2><p class="m">Thème actuel : <b>'+({dark:'Noir',light:'Blanc',trail:'Vert trail'})[cfg.appTheme||'dark']+'</b></p><button class="b alt" onclick="goTab(\'appearance\')">Choisir le thème</button></div>' + '<div class="card"><h2>Intelligence artificielle</h2><p class="m">Modèle du coach : <b>'+coachModelName()+'</b></p><button class="b alt" onclick="goTab(\'ai-models\')">Choisir le modèle IA</button></div>' + det('c1', '<h2 style="margin:0">Connexion Strava ' + (cfg.refresh ? '<span class="ok">● connecté</span>' : '') + '</h2>',
+  return '<div class="card"><h2>Réinitialisation du coach</h2><p class="m">Repartir de zéro sans supprimer votre programme, vos objectifs, votre profil ou vos activités Strava. Après la réinitialisation, le coach pourra toujours consulter et modifier le programme actuel.</p>' +
+    '<p class="m">Discussions : ' + (chatThreads.length + archivedChats.length) + ' · États de forme : ' + feels.length + '</p>' +
+    '<button class="b alt" onclick="resetCoachHistory()">Réinitialiser le tchat et ses archives</button>' +
+    '<button class="b alt" onclick="resetCoachFeelings()">Supprimer les états de forme et ressentis</button>' +
+    '<button class="b" onclick="resetCoachAll()">Réinitialiser tchat + ressentis</button>' +
+    '<small class="m" style="display:block;margin-top:8px">Attention : ces suppressions sont définitives sur cet appareil. Faites une sauvegarde si vous souhaitez conserver l’historique.</small></div>' + '<div class="card"><h2>Apparence</h2><p class="m">Thème actuel : <b>'+({dark:'Noir',light:'Blanc',trail:'Vert trail'})[cfg.appTheme||'dark']+'</b></p><button class="b alt" onclick="goTab(\'appearance\')">Choisir le thème</button></div>' + '<div class="card"><h2>Intelligence artificielle</h2><p class="m">Modèle du coach : <b>'+coachModelName()+'</b></p><button class="b alt" onclick="goTab(\'ai-models\')">Choisir le modèle IA</button></div>' + det('c1', '<h2 style="margin:0">Connexion Strava ' + (cfg.refresh ? '<span class="ok">● connecté</span>' : '') + '</h2>',
     '<div style="margin-top:10px"><div class="m" style="margin-bottom:8px">Sur iPhone, saisissez ces informations dans l’app ouverte depuis l’icône de l’écran d’accueil : elle a son propre stockage, distinct de Safari. Une seule fois suffit ensuite.</div>' +
     '<label>Client ID</label><input id="cid" inputmode="numeric" value="' + esc(cfg.id) + '">' +
     '<label>Client Secret</label><input id="csec" type="password" value="' + esc(cfg.secret) + '">' +
