@@ -270,7 +270,7 @@ nav button .nav-label{font-size:9px;letter-spacing:0}
 
 <script>
 const $ = s => document.querySelector(s);
-const KC = 'bt_cfg', KA = 'bt_acts', KG = 'bt_goals', KP = 'bt_plan', KF = 'bt_prof', KB = 'bt_abs', KO = 'bt_off', KR = 'bt_feel', KM = 'bt_maint', KS = 'bt_gear', KH = 'bt_chat', KJ = 'bt_adj', KX = 'bt_session_edits', KTH = 'bt_chat_threads', KAH = 'bt_chat_archives', KAC = 'bt_chat_active', KCOMP = 'bt_comparison_snapshot';
+const KC = 'bt_cfg', KA = 'bt_acts', KG = 'bt_goals', KP = 'bt_plan', KF = 'bt_prof', KB = 'bt_abs', KO = 'bt_off', KR = 'bt_feel', KM = 'bt_maint', KS = 'bt_gear', KH = 'bt_chat', KJ = 'bt_adj', KX = 'bt_session_edits', KTH = 'bt_chat_threads', KAH = 'bt_chat_archives', KAC = 'bt_chat_active';
 const load = (k, d) => { try { const v = JSON.parse(localStorage.getItem(k)); return v === null || v === undefined ? d : v } catch (e) { return d } };
 const save = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)) } catch (e) { log('Stockage local plein ou indisponible.') } };
 let cfg = load(KC, {}), acts = load(KA, []), goals = load(KG, null), plan = load(KP, null), prof = load(KF, {}), absences = load(KB, null),
@@ -286,7 +286,6 @@ if (!chatThreads.length) {
   activeChatId = chatThreads[0].id; save(KAC, activeChatId);
 }
 let activeThread = chatThreads.find(t => t.id === activeChatId) || chatThreads[0];
-let comparisonSnapshot = load(KCOMP, null);
 chat = Array.isArray(activeThread.messages) ? activeThread.messages : chat;
 
 // Migration sécurisée : supprime une éventuelle ancienne clé Anthropic stockée localement.
@@ -1383,33 +1382,33 @@ function newChat() {
   chat = []; chatThreads.push({ id: activeChatId, title: 'Nouvelle discussion', updated: Date.now(), messages: [] });
   save(KTH, chatThreads); save(KH, chat); save(KAC, activeChatId); paint();
 }
-function startComparison() {
-  if (chatBusy) return;
-  if (chat.length && !confirm('Ouvrir un essai indépendant ? La conversation actuelle sera archivée. Votre programme et vos ressentis seront conservés sur l’appareil mais exclus du contexte de comparaison.')) return;
-  // Le premier essai fixe les données sportives ; les suivants réutilisent exactement le même instantané.
-  if (!comparisonSnapshot) {
-    comparisonSnapshot = { created: new Date().toISOString(), context: coachContext(true), program: coachProgramData(true) };
-    save(KCOMP, comparisonSnapshot);
-  }
-  archiveCurrentChat();
-  activeChatId = 'mendi-comparison-' + Date.now() + '-' + Math.floor(Math.random()*10000);
+function resetCoachHistory() {
+  if (chatBusy) return alert('Attendez la fin de la réponse du coach.');
+  if (!confirm('Supprimer définitivement toutes les discussions du coach, y compris les archives et les propositions non validées ? Votre programme actuel, vos objectifs et vos activités Strava seront conservés.')) return;
   chat = [];
-  chatThreads.push({ id: activeChatId, title: 'Comparaison · ' + coachModelName(), updated: Date.now(), messages: [], comparison: true, comparisonModel: cfg.coachModel || 'luna' });
-  save(KTH, chatThreads); save(KH, chat); save(KAC, activeChatId); paint();
+  archivedChats = [];
+  activeChatId = 'mendi-' + Date.now();
+  chatThreads = [{ id: activeChatId, title: 'Nouvelle discussion', updated: Date.now(), messages: [] }];
+  save(KH, chat); save(KTH, chatThreads); save(KAH, archivedChats); save(KAC, activeChatId);
+  localStorage.removeItem('bt_comparison_snapshot');
+  paint();
 }
-function resetComparisonSnapshot() {
-  if (chatBusy) return;
-  if (!confirm('Recommencer une série de comparaisons avec les données sportives actuelles ? Les anciennes discussions et propositions resteront archivées.')) return;
-  comparisonSnapshot = null; localStorage.removeItem(KCOMP);
-  startComparison();
-}
-function deleteFeelings() {
-  if (chatBusy) return;
+function resetCoachFeelings() {
+  if (chatBusy) return alert('Attendez la fin de la réponse du coach.');
   if (!feels.length) return alert('Aucun état de forme enregistré.');
-  if (!confirm('Supprimer définitivement les ' + feels.length + ' états de forme enregistrés sur cet appareil ? Cette suppression ne modifie pas les anciennes conversations, ni les ajustements déjà appliqués au programme.')) return;
+  if (!confirm('Supprimer définitivement les ' + feels.length + ' états de forme et ressentis enregistrés ? Le programme actuel et les activités sportives seront conservés. Les messages déjà écrits dans le chat ne seront pas effacés.')) return;
   feels = []; save(KR, feels); paint();
 }
-function isComparisonChat() { return !!(chatThreads.find(t => t.id === activeChatId) || {}).comparison; }
+function resetCoachAll() {
+  if (chatBusy) return alert('Attendez la fin de la réponse du coach.');
+  if (!confirm('Tout réinitialiser pour le coach : supprimer toutes les discussions et archives ainsi que tous les états de forme ? Le programme actuel, vos objectifs, votre profil et Strava seront conservés. Cette action est irréversible.')) return;
+  chat = []; archivedChats = []; feels = [];
+  activeChatId = 'mendi-' + Date.now();
+  chatThreads = [{ id: activeChatId, title: 'Nouvelle discussion', updated: Date.now(), messages: [] }];
+  save(KH, chat); save(KTH, chatThreads); save(KAH, archivedChats); save(KAC, activeChatId); save(KR, feels);
+  localStorage.removeItem('bt_comparison_snapshot');
+  paint();
+}
 function restoreChat(id) {
   if (chatBusy) return;
   if (!archivedChats.some(x => x.id === id)) return;
@@ -1493,7 +1492,7 @@ async function sendCoach(text) {
     while (msgs.length && msgs[0].role !== 'user') msgs.shift();
     const r = await fetch(cfg.aiEndpoint, { method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ system: COACH_SYS + COACH_DATA_SYS + (isComparisonChat() ? '\nMODE COMPARAISON INDÉPENDANTE : construis le programme à partir des seules données sportives figées et des messages de cette discussion. Aucun programme antérieur ni ressenti historique n’est fourni. Ne suppose aucune décision issue d’une autre conversation.' : ''), context: isComparisonChat() && comparisonSnapshot ? comparisonSnapshot.context : coachContext(), program: isComparisonChat() && comparisonSnapshot ? comparisonSnapshot.program : coachProgramData(), messages: msgs, modelChoice: ['luna','terra','sol'].includes(cfg.coachModel) ? cfg.coachModel : 'luna' }) });
+      body: JSON.stringify({ system: COACH_SYS + COACH_DATA_SYS, context: coachContext(), program: coachProgramData(), messages: msgs, modelChoice: ['luna','terra','sol'].includes(cfg.coachModel) ? cfg.coachModel : 'luna' }) });
     if (!r.ok) { const detail = (await r.text()).slice(0, 240); throw new Error('Relais OpenAI : HTTP ' + r.status + (detail ? ' · ' + detail : '')); }
     const j = await r.json();
     const p = parseCoach(j && (j.reply !== undefined || j.actions !== undefined) ? j : (j.text || ''));
@@ -1523,7 +1522,12 @@ function vAppearance(){
     ['light','Blanc','Clair et minimaliste','#ffffff','#3e7652'],
     ['trail','Vert trail','Vert forêt mat','#2b3a30','#bcd59e']
   ];
-  return '<div class="card"><h2>Contexte du coach et états de forme</h2><p class="m">Pour repartir de zéro sans perdre vos données sportives, utilisez un essai indépendant. Les ressentis restent enregistrés mais ne sont pas envoyés au coach pendant la comparaison.</p><button class="b alt" onclick="goTab(\'coach\')">Ouvrir la comparaison de programmes</button><p class="m">'+feels.length+' état(s) de forme enregistré(s).</p><button class="b alt" onclick="deleteFeelings()">Supprimer définitivement mes états de forme</button></div>' + '<div class="card"><h2>Apparence</h2><p class="m">Choisissez les couleurs de MENDI. Le thème est enregistré sur cet appareil et ne modifie ni votre programme ni les réglages du coach.</p>'+
+  return '<div class="card"><h2>Réinitialisation du coach</h2><p class="m">Repartir de zéro sans supprimer votre programme, vos objectifs, votre profil ou vos activités Strava. Après la réinitialisation, le coach pourra toujours consulter et modifier le programme actuel.</p>' +
+    '<p class="m">Discussions : ' + (chatThreads.length + archivedChats.length) + ' · États de forme : ' + feels.length + '</p>' +
+    '<button class="b alt" onclick="resetCoachHistory()">Réinitialiser le tchat et ses archives</button>' +
+    '<button class="b alt" onclick="resetCoachFeelings()">Supprimer les états de forme et ressentis</button>' +
+    '<button class="b" onclick="resetCoachAll()">Réinitialiser tchat + ressentis</button>' +
+    '<small class="m" style="display:block;margin-top:8px">Attention : ces suppressions sont définitives sur cet appareil. Faites une sauvegarde si vous souhaitez conserver l’historique.</small></div>' + '<div class="card"><h2>Apparence</h2><p class="m">Choisissez les couleurs de MENDI. Le thème est enregistré sur cet appareil et ne modifie ni votre programme ni les réglages du coach.</p>'+
     themes.map(t=>'<label class="theme-choice"><input type="radio" name="appTheme" value="'+t[0]+'" '+(current===t[0]?'checked':'')+' onchange="selectAppTheme(this.value)"><span class="theme-swatch" style="background:'+t[3]+'"><i style="background:'+t[4]+'"></i></span><span><b>'+t[1]+(t[0]==='dark'?' · par défaut':'')+'</b><small class="m" style="display:block">'+t[2]+'</small></span></label>').join('')+
     '<button class="b alt" onclick="goTab(\'cfg\')">Retour aux réglages</button></div>';
 }
@@ -1561,13 +1565,6 @@ function coachPage() {
     '<button onclick="quickCoach(\'Aide-moi à préparer mon prochain trail en tenant compte de mon programme.\')">⌁ &nbsp;Préparer mon trail</button></div></section>';
   h += '<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><h2 style="margin:0">Discussion en cours</h2><span class="chip">' + chat.length + ' messages</span></div>';
   h += '<div class="chat-tools" style="margin-top:10px"><button class="b alt" onclick="newChat()">＋ Nouvelle discussion</button><button class="b alt" onclick="archiveOnly()">Archiver</button><button class="b alt" onclick="clearChat()">Vider</button></div>' + '<button class="b" style="width:100%;margin-top:10px" onclick="requestPlanChange()" ' + (chatBusy || !cfg.aiEndpoint ? 'disabled' : '') + '>✓ Construire / revoir tout mon programme</button><small class="m" style="display:block;margin-top:5px">Modèle sélectionné : '+coachModelName()+'. Les programmes longs peuvent être coûteux ou incomplets avec Luna. Le coach prépare une nouvelle version complète à partir de vos objectifs, de vos activités et de notre discussion. Rien ne change sans votre validation.</small>';
-  h += '<div class="card" style="margin-top:12px"><h2 style="margin:0 0 6px">Comparer Luna, Terra et Sol</h2>' +
-    '<p class="m">Un essai indépendant ignore les anciennes discussions, les ressentis enregistrés, les propositions en attente et le programme actuel. Les données sportives sont figées pour comparer les modèles sur la même base.</p>' +
-    (isComparisonChat() ? '<p class="m"><b>Essai indépendant actif</b> · '+coachModelName()+'</p>' : '') +
-    (comparisonSnapshot ? '<p class="m">Données de référence : '+new Date(comparisonSnapshot.created).toLocaleString('fr-FR')+'.</p>' : '') +
-    '<button class="b alt" onclick="startComparison()">＋ Nouvel essai indépendant</button>' +
-    (comparisonSnapshot ? '<button class="b alt" onclick="resetComparisonSnapshot()">Actualiser les données de comparaison</button>' : '') +
-    '<small class="m" style="display:block;margin-top:7px">Les programmes proposés restent dans leurs discussions archivées tant que vous ne les validez pas.</small></div>';
   if (!cfg.aiEndpoint) h += '<div class="adv warn" style="margin-top:12px">Le coach n’est pas connecté. Configurez l’adresse du relais OpenAI dans Réglages → Coach IA.</div>';
   if (!chat.length) h += '<div class="msg a" style="margin-top:14px">Bonjour ! Je peux vous aider à adapter votre préparation, analyser votre fatigue et équilibrer course, vélo et renforcement. Que souhaitez-vous travailler aujourd’hui ?</div>';
   h += '<div class="coach-messages" style="margin-top:12px">';
@@ -1608,7 +1605,7 @@ function coachPage() {
 function quickCoach(text) { const input = $('#cin'); if (input) input.value = text; sendCoach(text); }
 function requestPlanChange() {
   if (chatBusy || !cfg.aiEndpoint) return;
-  sendCoach((isComparisonChat() ? 'À partir des données sportives de référence de cette comparaison, sans utiliser aucun ancien programme ni ressenti historique, construis' : 'À partir de toute notre discussion, de mes objectifs, de mon profil, de mes activités et de mon programme actuel, construis') + ' une nouvelle version complète et cohérente de mon programme jusqu’au dernier objectif enregistré. Revois librement les phases, les semaines et les séances à venir. Intègre course à pied, vélo et renforcement lorsque c’est pertinent. Conserve les objectifs existants sauf si notre discussion demande explicitement de les modifier. Retourne une proposition structurée complète, sans appliquer aucun changement. Si une information réellement indispensable manque, pose une seule question et ne génère pas de programme incomplet.');
+  sendCoach('À partir de notre discussion, de mes objectifs, de mon profil, de mes activités et de mon programme actuel, construis une nouvelle version complète et cohérente de mon programme jusqu’au dernier objectif enregistré. Revois librement les phases, les semaines et les séances à venir. Intègre course à pied, vélo et renforcement lorsque c’est pertinent. Conserve les objectifs existants sauf si notre discussion demande explicitement de les modifier. Retourne une proposition structurée complète, sans appliquer aucun changement. Si une information réellement indispensable manque, pose une seule question et ne génère pas de programme incomplet.');
 }
 function archiveOnly() {
   if (!chat.length) return alert('Cette discussion est déjà vide.');
