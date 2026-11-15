@@ -1620,8 +1620,48 @@ function raceCards() {
       '<div class="rt"><div class="rn">' + esc(g.name) + '</div><div class="rm">' + fmtD(g.date) + ' · ' + dist + (g.confirmed === false ? ' · date à confirmer' : '') + '</div></div></div>';
   }).join('') + '</div>';
 }
+function currentWeekActuals(t) {
+  const entries = acts.filter(a => a && typeof a.date === 'string' && weekStart(a.date) === t)
+    .sort((a,b) => a.date.localeCompare(b.date));
+  if (!entries.length) return '<div class="m" style="margin-top:10px">Aucune activité réalisée et synchronisée cette semaine.</div>';
+  const run = entries.filter(a => grp(a.type) === 'run');
+  const bike = entries.filter(a => grp(a.type) === 'ride');
+  const km = arr => arr.reduce((sum,a) => sum + (+a.dist || 0),0)/1000;
+  let h = '<div class="m" style="margin:10px 0"><b>' + entries.length + ' activité' + (entries.length>1?'s':'') + ' réalisée' + (entries.length>1?'s':'') + '</b>' +
+    (run.length ? ' · 🏃 ' + km(run).toFixed(1).replace('.',',') + ' km' : '') +
+    (bike.length ? ' · 🚲 ' + km(bike).toFixed(1).replace('.',',') + ' km' : '') + '</div>';
+  h += entries.map(a => {
+    const sport = grp(a.type), ico = sport === 'run' ? '🏃' : sport === 'ride' ? '🚲' : '✓';
+    const distance = Number.isFinite(+a.dist) && +a.dist > 0 ? ' · ' + (+a.dist/1000).toFixed(1).replace('.',',') + ' km' : '';
+    const duration = Number.isFinite(+a.time) && +a.time > 0 ? ' · ' + Math.round(+a.time/60) + ' min' : '';
+    const date = a.date.slice(0,10);
+    return '<div class="sess done"><div class="n">✓ ' + ico + ' ' + esc(a.name || a.title || (sport === 'run' ? 'Course à pied' : sport === 'ride' ? 'Vélo' : 'Activité')) + '</div>' +
+      '<div class="m">' + dayLabel(date) + distance + duration + '</div></div>';
+  }).join('');
+  return h;
+}
+function homeCurrentWeek(t, w) {
+  const label = 'Semaine du ' + fmtS(t);
+  let h = '<div class="card"><h2>Planning de la semaine en cours</h2><div class="m">' + label + '</div>';
+  if (w) {
+    const asg = assignDays(w), done = runKmWeek(t), bd = bikeMinWeek(t);
+    h += (w.note ? '<div class="m" style="margin-top:8px">' + esc(w.note) + '</div>' : '') + weekStrip(w) +
+      '<div class="m" style="margin:-4px 0 8px">Touchez un jour à venir pour le marquer OFF : les séances se replacent.</div>' +
+      '<div>Course : <b>' + done.toFixed(0) + '</b> / ' + w.vol + ' km</div>' +
+      '<div class="bar"><div style="width:' + Math.min(100,done/Math.max(1,w.vol)*100) + '%"></div></div>' +
+      asg.map(r => sessRow(r,r.done,r.iso ? (r.done?'Fait · ':'') + dayLabel(r.iso) : 'À replacer (aucun jour disponible)')).join('') + bikeRow(w,bd);
+  } else {
+    // Une semaine sans plan doit quand même afficher ses sept jours et ses activités.
+    h += weekStrip({t, runs:[], coachSessions:[]});
+    h += '<div class="m" style="margin-top:8px">Aucune séance planifiée cette semaine.</div>';
+  }
+  h += '<h3 style="margin:18px 0 8px">Séances réalisées (Strava)</h3>' + currentWeekActuals(t);
+  return h + '</div>';
+}
 function vHome() {
   const cur = curWeek(); let h = raceCards();
+  const thisWeek = plan && Array.isArray(plan.weeks) ? plan.weeks.find(x => x.t === cur) : null;
+  h += homeCurrentWeek(cur, thisWeek);
   if (!plan || !plan.weeks.length) {
     return h + '<div class="card"><h2>Mon plan</h2><div>Aucun plan pour l’instant.</div>' +
       (acts.length ? '' : '<div class="m">Synchronisez d’abord vos activités (Réglages) pour que le plan parte de votre niveau réel.</div>') +
@@ -1633,15 +1673,6 @@ function vHome() {
     if (d < 0.7 * pw.vol) h += '<div class="card warn"><b>Écart avec le plan</b><div class="m">Semaine dernière : ' + d.toFixed(0) + ' km de course pour ' + pw.vol + ' prévus.</div><button class="b" style="margin-top:8px" onclick="' + (plan.source === 'coach' ? 'tab=\'coach\';paint()' : 'makePlan(true);paint()') + '">Adapter le plan à ma forme actuelle</button></div>';
     else if (d > 1.25 * pw.vol) h += '<div class="card warn"><b>Au-dessus du plan</b><div class="m">Semaine dernière : ' + d.toFixed(0) + ' km pour ' + pw.vol + ' prévus. Pensez à lever le pied si la fatigue s’accumule.</div><button class="b" style="margin-top:8px" onclick="' + (plan.source === 'coach' ? 'tab=\'coach\';paint()' : 'makePlan(true);paint()') + '">Adapter le plan</button></div>';
   }
-  const w = plan.weeks.find(x => x.t === cur);
-  if (w) {
-    const done = runKmWeek(cur), bd = bikeMinWeek(cur), asg = assignDays(w);
-    h += '<div class="card"><h2>Cette semaine · ' + pill(w.kind, w.phase) + '</h2>' +
-      (w.note ? '<div class="m" style="margin-bottom:8px">' + esc(w.note) + '</div>' : '') + weekStrip(w) +
-      '<div class="m" style="margin:-4px 0 8px">Touchez un jour à venir pour le marquer OFF : les séances se replacent.</div>' +
-      '<div>Course : <b>' + done.toFixed(0) + '</b> / ' + w.vol + ' km</div><div class="bar"><div style="width:' + Math.min(100, done / Math.max(1, w.vol) * 100) + '%"></div></div>' +
-      asg.map(r => sessRow(r, r.done, r.iso ? (r.done ? 'Fait · ' : '') + dayLabel(r.iso) : 'À replacer (aucun jour disponible)')).join('') + bikeRow(w, bd) + '</div>';
-  } else h += '<div class="card"><div class="m">Pas de séance prévue cette semaine.</div></div>';
   const al = maintAlerts();
   if (al.length) h += '<div class="card warn"><b>🔧 Entretien</b>' + al.slice(0, 4).map(x => '<div class="m"><b class="' + lvl(x.r) + '">' + esc(x.it.name) + '</b> · ' + esc(gearName(x.it.gear)) + ' · ' + nbr(x.km) + ' / ' + nbr(x.it.limit) + ' km</div>').join('') + '<button class="b alt" style="margin-top:8px" onclick="tab=\'gear\';paint()">Voir le matériel</button></div>';
   const nx = plan.weeks.filter(x => x.t > cur).slice(0, 3);
