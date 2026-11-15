@@ -1157,22 +1157,32 @@ function validWorkout(w, depth = 0) {
   if (w.exercises != null && (!Array.isArray(w.exercises) || w.exercises.length > 30 || !w.exercises.every(e => e && typeof e.name === 'string' && e.name.trim() && Number.isInteger(+e.sets) && +e.sets >= 1 && +e.sets <= 20 && (typeof e.reps === 'string' || Number.isFinite(+e.reps)) && String(e.reps).length <= 40 && (e.restSec == null || (Number.isFinite(+e.restSec) && +e.restSec >= 0 && +e.restSec <= 1800)) && ['tempo','load','side','notes'].every(k => e[k] == null || typeof e[k] === 'string')))) return false;
   return (w.steps == null || Array.isArray(w.steps)) && (w.exercises == null || Array.isArray(w.exercises)) && (w.steps || w.exercises);
 }
-function workoutMarkup(workout) {
+function workoutMarkup(workout, details = '') {
   if (!workout || !validWorkout(workout)) return '';
-  const targetText = t => {
+  const targetText = (t, kind) => {
+    if (t && t.type === 'rpe' && t.min == null && t.max == null && details) {
+      const parts = String(details).split(/[;；]/);
+      const candidates = parts.map(part => ({part, rpe: [...part.matchAll(/RPE\s*(\d+(?:[.,]\d+)?)(?:\s*[–-]\s*(\d+(?:[.,]\d+)?))?\s*\/\s*10/gi)]})).filter(x => x.rpe.length);
+      let match;
+      if (kind === 'work') match = candidates.find(x => /(?:\d+\s*[×x]\s*\d+|souten|rapide|intens|fractionn|effort|répétition)/i.test(x.part));
+      if (kind === 'recovery') match = candidates.find(x => /récup/i.test(x.part));
+      if (kind === 'warmup') match = candidates.find(x => /échauff/i.test(x.part));
+      if (kind === 'cooldown') match = candidates.find(x => /retour au calme/i.test(x.part));
+      if (match) return 'RPE ' + match.rpe[0][1].replace(',', '.') + (match.rpe[0][2] ? '–' + match.rpe[0][2].replace(',', '.') : '') + '/10';
+    }
     if (!t) return '';
     if (t.label) return esc(t.label);
     if (t.type === 'pace' && t.min != null && t.max != null) return 'Allure ' + esc(formatPace(t.min)) + '–' + esc(formatPace(t.max)) + '/km';
     if (t.type === 'hr') return 'FC ' + (t.min != null ? t.min : '') + (t.max != null ? '–' + t.max : '') + ' bpm';
     if (t.type === 'power') return 'Puissance ' + (t.min != null ? t.min : '') + (t.max != null ? '–' + t.max : '') + ' W';
-    if (t.type === 'rpe') return 'RPE ' + (t.min != null ? t.min : '') + (t.max != null ? '–' + t.max : '') + '/10';
+    if (t.type === 'rpe') return t.min != null || t.max != null ? 'RPE ' + (t.min != null ? t.min : t.max) + (t.max != null && t.min != null && t.max !== t.min ? '–' + t.max : '') + '/10' : 'RPE à préciser';
     return t.type === 'open' ? 'Libre' : '';
   };
   const dur = d => d ? d.value + ' ' + ({sec:'s',min:'min',m:'m',km:'km'}[d.unit] || d.unit) : '';
   const names = {warmup:'Échauffement',steady:'Continu',work:'Effort',recovery:'Récupération',cooldown:'Retour au calme'};
   const steps = (arr, level=0) => (arr || []).map(st => st.kind === 'repeat'
     ? '<div class="m" style="margin-top:5px;padding-left:'+(level*10)+'px"><b>Répéter '+st.repeatCount+' fois</b>'+steps(st.steps,level+1)+'</div>'
-    : '<div class="m" style="padding-left:'+(level*10)+'px">• <b>'+names[st.kind]+'</b> · '+dur(st.duration)+(targetText(st.target) ? ' · '+targetText(st.target) : '')+'</div>').join('');
+    : '<div class="m" style="padding-left:'+(level*10)+'px">• <b>'+names[st.kind]+'</b> · '+dur(st.duration)+(targetText(st.target, st.kind) ? ' · '+targetText(st.target, st.kind) : '')+'</div>').join('');
   let html = '';
   if (workout.steps && workout.steps.length) html += '<div class="adv" style="margin-top:6px"><b>Déroulé de la séance</b>'+steps(workout.steps)+'</div>';
   if (workout.exercises && workout.exercises.length) html += '<div class="adv" style="margin-top:6px"><b>Exercices</b>'+workout.exercises.map(e => '<div class="m">• <b>'+esc(e.name)+'</b> · '+e.sets+' × '+esc(e.reps)+(e.side ? ' · '+esc(e.side) : '')+(e.restSec != null ? ' · repos '+e.restSec+' s' : '')+(e.tempo ? ' · tempo '+esc(e.tempo) : '')+(e.load ? ' · '+esc(e.load) : '')+(e.notes ? ' · '+esc(e.notes) : '')+'</div>').join('')+'</div>';
@@ -1471,7 +1481,7 @@ function coachPage() {
         '<div class="m">' + weekCount + ' semaines · ' + runCount + ' séances de course · ' + bikeCount + ' séances vélo · ' + strengthCount + ' séances de renforcement</div>' +
         (function(){ const d = programProposalDiff(pp); return '<div class="adv" style="margin-top:8px"><b>Comparaison avec le programme actuel</b><div class="m">' + d.addedOrChanged + ' séance(s) nouvelle(s) ou modifiée(s) · ' + d.removedOrChanged + ' séance(s) retirée(s) ou remplacée(s)</div><div class="m">' + d.oldCount + ' séance(s) actuellement planifiée(s) → ' + d.nextCount + ' dans la proposition</div></div>'; })() +
         (pp.phases && pp.phases.length ? '<div style="margin-top:8px">' + pp.phases.map(ph => '<div class="m">• ' + esc(ph.name || ph.title || '') + (ph.description ? ' : ' + esc(ph.description) : '') + '</div>').join('') + '</div>' : '') +
-        '<details style="margin-top:9px"><summary><b>Aperçu des semaines</b> <span class="m">· Afficher</span></summary>' + pp.weeks.map(w => '<div class="row"><div><b>' + fmtD(w.weekStart) + ' · ' + esc(w.phase) + '</b><div class="m">' + w.sessions.map(x => esc(x.title) + (x.sport === 'run' ? ' (' + x.distanceKm + ' km)' : '') + (x.workout && x.workout.steps ? ' · séance détaillée' : '') + (x.workout && x.workout.exercises ? ' · exercices détaillés' : '')).join(' · ') + w.sessions.map(x => workoutMarkup(x.workout)).join('') + '</div></div><div class="r">' + (+w.targetRunKm).toFixed(0) + ' km</div></div>').join('') + '</details>' +
+        '<details style="margin-top:9px"><summary><b>Aperçu des semaines</b> <span class="m">· Afficher</span></summary>' + pp.weeks.map(w => '<div class="row"><div><b>' + fmtD(w.weekStart) + ' · ' + esc(w.phase) + '</b><div class="m">' + w.sessions.map(x => esc(x.title) + (x.sport === 'run' ? ' (' + x.distanceKm + ' km)' : '') + (x.workout && x.workout.steps ? ' · séance détaillée' : '') + (x.workout && x.workout.exercises ? ' · exercices détaillés' : '')).join(' · ') + w.sessions.map(x => workoutMarkup(x.workout, x.details)).join('') + '</div></div><div class="r">' + (+w.targetRunKm).toFixed(0) + ' km</div></div>').join('') + '</details>' +
         (!m.programApplied && !m.programRejected && !m.programSuperseded ? '<button class="b" onclick="applyProgramProposal(' + mi + ')">Valider le nouveau programme</button><button class="b alt" onclick="rejectProgramProposal(' + mi + ')">Refuser cette proposition</button>' : '') + '</div>';
     }
     (m.actions || []).forEach((a, ai) => {
@@ -1571,12 +1581,12 @@ function vGear() {
 /* ---------- Vues ---------- */
 function sessRow(r, ok, dt) {
   return '<div class="sess' + (ok ? ' done' : '') + '"><div class="row" style="border:0;padding:0"><div><div class="n run">' + (ok ? '✓ ' : '') + esc(r.t) + '</div><div class="m">' + esc(dt || r.d) + '</div></div>' +
-    '<div class="r"><b>' + (r.race ? esc(r.txt) : r.km + ' km') + '</b></div></div>' + (r.x ? '<div class="m">' + esc(r.x) + '</div>' : '') + workoutMarkup(r.workout) + '</div>';
+    '<div class="r"><b>' + (r.race ? esc(r.txt) : r.km + ' km') + '</b></div></div>' + (r.x ? '<div class="m">' + esc(r.x) + '</div>' : '') + workoutMarkup(r.workout, r.x) + '</div>';
 }
 function strengthBlock(w) {
   if (Array.isArray(w.strengthSessions)) {
     if (!w.strengthSessions.length) return '';
-    return w.strengthSessions.map(x => '<div class="sess"><div class="n">' + esc(x.title) + '</div><div class="m">' + dayLabel(x.date) + (x.durationMin ? ' · ' + x.durationMin + ' min' : '') + '</div>' + (x.details ? '<div class="m">' + esc(x.details) + '</div>' : '') + workoutMarkup(x.workout) + '</div>').join('');
+    return w.strengthSessions.map(x => '<div class="sess"><div class="n">' + esc(x.title) + '</div><div class="m">' + dayLabel(x.date) + (x.durationMin ? ' · ' + x.durationMin + ' min' : '') + '</div>' + (x.details ? '<div class="m">' + esc(x.details) + '</div>' : '') + workoutMarkup(x.workout, x.details) + '</div>').join('');
   }
   // Keep strength deliberately light in recovery, taper and race weeks.
   if (w.kind === 'race') return '<div class="sess"><div class="n">Renforcement</div><div class="m">Pas de séance de force cette semaine : priorité à la fraîcheur et à la course.</div></div>';
@@ -1591,7 +1601,7 @@ function strengthBlock(w) {
 function bikeRow(w, done) {
   const cm = w.t <= curWeek() ? commuteWeek(w.t) : { n: 0, km: 0 };
   const plannedBike = Array.isArray(w.coachSessions) ? w.coachSessions.filter(x => x.sport === 'bike') : [];
-  const customBike = plannedBike.map(x => '<div class="m"><b class="ride">' + esc(x.title) + '</b> · ' + dayLabel(x.date) + (x.durationMin ? ' · ' + x.durationMin + ' min' : '') + (x.distanceKm ? ' · ' + x.distanceKm + ' km' : '') + (x.details ? '<br>' + esc(x.details) : '') + workoutMarkup(x.workout) + '</div>').join('');
+  const customBike = plannedBike.map(x => '<div class="m"><b class="ride">' + esc(x.title) + '</b> · ' + dayLabel(x.date) + (x.durationMin ? ' · ' + x.durationMin + ' min' : '') + (x.distanceKm ? ' · ' + x.distanceKm + ' km' : '') + (x.details ? '<br>' + esc(x.details) : '') + workoutMarkup(x.workout, x.details) + '</div>').join('');
   if (!w.bikeMin && !w.brick && !cm.n && !customBike) return '';
   let s = '<div class="sess">';
   if (cm.n) s += '<div class="n ride">Vélotaf : ' + cm.n + ' trajet' + (cm.n > 1 ? 's' : '') + ' · ' + cm.km.toFixed(0) + ' km</div>';
