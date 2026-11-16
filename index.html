@@ -957,15 +957,29 @@ function assignDays(w) {
   }
   return res.sort((a, b) => (a.iso || '9').localeCompare(b.iso || '9'));
 }
-function toggleOff(d) {
-  offs = offs.filter(x => x >= todayIso());
-  if (offs.includes(d)) offs = offs.filter(x => x !== d); else offs.push(d);
-  if (plan && plan.source === 'coach') {
-    const w = plan.weeks.find(x => x.t === weekStart(d + 'T00:00:00Z'));
-    if (w && w.runs) w.runs.forEach(r => { if (r.iso === d && d >= todayIso()) r.iso = null; });
-    save(KP, plan);
-  }
-  save(KO, offs); paint();
+// Le calendrier est en consultation seule : aucune modification du plan au toucher.
+function showDayDetails(el, d) {
+  const strip = el.closest('.wk');
+  const panel = strip && strip.nextElementSibling;
+  if (!panel || !panel.classList.contains('day-info')) return;
+  strip.querySelectorAll('.dy').forEach(x => x.classList.remove('selected'));
+  el.classList.add('selected');
+  const week = plan && Array.isArray(plan.weeks) ? plan.weeks.find(w => w.t === weekStart(d + 'T00:00:00Z')) : null;
+  const sessions = week ? assignDays(week).filter(r => r.iso === d) : [];
+  const other = week ? [...(week.coachSessions || []), ...(week.strengthSessions || [])].filter(r => (r.date || r.iso) === d) : [];
+  const activities = acts.filter(a => a.date && a.date.slice(0,10) === d);
+  const lines = sessions.map(r => '<div class="m">🏃 ' + esc(r.t || r.title || 'Course') + (r.km ? ' · ' + r.km + ' km' : '') + '</div>')
+    .concat(other.map(r => '<div class="m">• ' + esc(r.title || 'Séance') + '</div>'))
+    .concat(activities.map(a => '<div class="m">✓ ' + esc(a.name || a.title || 'Activité réalisée') + '</div>'));
+  panel.hidden = false;
+  panel.innerHTML = '<b>' + esc(dayLabel(d)) + '</b>' + (offs.includes(d) ? ' · OFF' : '') +
+    (lines.length ? lines.join('') : '<div class="m">Aucune séance planifiée ce jour.</div>') +
+    '<button class="b alt" style="margin-top:10px" onclick="askCoachForDay(\'' + d + '\')">Demander une modification au coach</button>';
+}
+function askCoachForDay(d) {
+  goTab('coach');
+  const input = document.getElementById('cin');
+  if (input) { input.value = 'Je souhaite modifier mon programme pour le ' + d + '. Peux-tu me proposer un ajustement à valider ?'; input.focus(); }
 }
 function weekStrip(w) {
   const t = w.t, today = todayIso(), cur = curWeek();
@@ -977,12 +991,12 @@ function weekStrip(w) {
     const day = acts.filter(a => a.date.slice(0, 10) === d);
     const rk = day.filter(a => grp(a.type) === 'run').reduce((s, a) => s + a.dist, 0) / 1000;
     const bk = day.filter(a => grp(a.type) === 'ride').reduce((s, a) => s + a.dist, 0) / 1000;
-    h += '<div class="dy' + (d === today ? ' today' : '') + (off ? ' off' : '') + (past ? ' past' : '') + '"' + (past ? '' : ' onclick="toggleOff(\'' + d + '\')"') + '>' +
+    h += '<div class="dy' + (d === today ? ' today' : '') + (off ? ' off' : '') + (past ? ' past' : '') + '"' + ' onclick="showDayDetails(this,\'' + d + '\')"' + '>' +
       '<b>' + DL[i] + '</b><div class="dd">' + Number(d.slice(8, 10)) + '</div>' + (off ? '<div class="tg">OFF</div>' : '') +
       (by[d] || []).map(r => '<div class="pl' + (r.done ? ' dn2' : '') + '">' + LBL[r.k] + '</div>').join('') +
       (rk > 0 ? '<div class="av run">🏃' + Math.round(rk) + '</div>' : '') + (bk > 0 ? '<div class="av ride">🚲' + Math.round(bk) + '</div>' : '') + '</div>';
   }
-  return h + '</div>';
+  return h + '</div><div class="day-info adv" hidden style="margin:8px 0 12px"></div>';
 }
 
 /* ---------- Objectifs & absences ---------- */
@@ -1742,7 +1756,7 @@ function homeCurrentWeek(t, w) {
   if (w) {
     const asg = assignDays(w), done = runKmWeek(t), bd = bikeMinWeek(t);
     h += (w.note ? '<div class="m" style="margin-top:8px">' + esc(w.note) + '</div>' : '') + weekStrip(w) +
-      '<div class="m" style="margin:-4px 0 8px">Touchez un jour à venir pour le marquer OFF : les séances se replacent.</div>' +
+      '<div class="m" style="margin:-4px 0 8px">Touchez un jour pour consulter ses séances. Pour le passer en repos ou modifier le planning, demandez au coach.</div>' +
       '<div>Course : <b>' + done.toFixed(0) + '</b> / ' + w.vol + ' km</div>' +
       '<div class="bar"><div style="width:' + Math.min(100,done/Math.max(1,w.vol)*100) + '%"></div></div>' +
       asg.map(r => sessRow(r,r.done,r.iso ? (r.done?'Fait · ':'') + dayLabel(r.iso) : 'À replacer (aucun jour disponible)')).join('') + bikeRow(w,bd);
