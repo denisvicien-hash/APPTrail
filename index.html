@@ -974,6 +974,13 @@ function showDayDetails(el,d) {
   const strip = el.closest('.wk');
   const panel = strip && strip.nextElementSibling;
   if (!panel || !panel.classList.contains('day-info')) return;
+  // Toucher une seconde fois le jour sélectionné ferme le panneau d'options.
+  if (el.classList.contains('selected') && !panel.hidden) {
+    el.classList.remove('selected');
+    panel.hidden = true;
+    panel.innerHTML = '';
+    return;
+  }
   strip.querySelectorAll('.dy').forEach(x => x.classList.remove('selected'));
   el.classList.add('selected');
   const {w,items} = daySessions(d);
@@ -1806,7 +1813,6 @@ function homeCurrentWeek(t, w) {
   if (w) {
     const asg = assignDays(w), done = runKmWeek(t), bd = bikeMinWeek(t);
     h += (w.note ? '<div class="m" style="margin-top:8px">' + esc(w.note) + '</div>' : '') + weekStrip(w) +
-      '<div class="m" style="margin:-4px 0 8px">Touchez un jour pour consulter ses séances. Utilisez « Déplacer » pour changer le jour d’une séance, ou demandez au coach pour adapter son contenu.</div>' +
       '<div>Course : <b>' + done.toFixed(0) + '</b> / ' + w.vol + ' km</div>' +
       '<div class="bar"><div style="width:' + Math.min(100,done/Math.max(1,w.vol)*100) + '%"></div></div>' +
       asg.map(r => sessRow(r,r.done,r.iso ? (r.done?'Fait · ':'') + dayLabel(r.iso) : 'À replacer (aucun jour disponible)')).join('') + bikeRow(w,bd);
