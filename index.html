@@ -957,24 +957,74 @@ function assignDays(w) {
   }
   return res.sort((a, b) => (a.iso || '9').localeCompare(b.iso || '9'));
 }
-// Le calendrier est en consultation seule : aucune modification du plan au toucher.
-function showDayDetails(el, d) {
+// Consultation du calendrier et déplacement manuel confirmé, sans appel au coach.
+function daySessions(d) {
+  const w = plan && Array.isArray(plan.weeks) ? plan.weeks.find(x => x.t === weekStart(d + 'T00:00:00Z')) : null;
+  if (!w) return {w:null, items:[]};
+  const items = [];
+  assignDays(w).forEach(r => {
+    if (r.iso !== d) return;
+    const i = w.runs.findIndex(x => x.t === r.t && (x.iso || null) === (r.fixed ? r.iso : null));
+    if (i >= 0) items.push({kind:'run', index:i, title:r.t, done:r.done, race:!!r.race, km:r.km});
+  });
+  (w.coachSessions || []).forEach((r,i) => { if (r.date === d) items.push({kind:'other', index:i, title:r.title || 'Séance', sport:r.sport}); });
+  return {w,items};
+}
+function showDayDetails(el,d) {
   const strip = el.closest('.wk');
   const panel = strip && strip.nextElementSibling;
   if (!panel || !panel.classList.contains('day-info')) return;
   strip.querySelectorAll('.dy').forEach(x => x.classList.remove('selected'));
   el.classList.add('selected');
-  const week = plan && Array.isArray(plan.weeks) ? plan.weeks.find(w => w.t === weekStart(d + 'T00:00:00Z')) : null;
-  const sessions = week ? assignDays(week).filter(r => r.iso === d) : [];
-  const other = week ? [...(week.coachSessions || []), ...(week.strengthSessions || [])].filter(r => (r.date || r.iso) === d) : [];
+  const {w,items} = daySessions(d);
   const activities = acts.filter(a => a.date && a.date.slice(0,10) === d);
-  const lines = sessions.map(r => '<div class="m">🏃 ' + esc(r.t || r.title || 'Course') + (r.km ? ' · ' + r.km + ' km' : '') + '</div>')
-    .concat(other.map(r => '<div class="m">• ' + esc(r.title || 'Séance') + '</div>'))
-    .concat(activities.map(a => '<div class="m">✓ ' + esc(a.name || a.title || 'Activité réalisée') + '</div>'));
+  const editable = d >= todayIso();
+  const lines = items.map(x => '<div class="m" style="padding:7px 0">' + (x.kind === 'run' ? '🏃 ' : '• ') + esc(x.title) + (x.km ? ' · ' + x.km + ' km' : '') +
+    (editable && !x.done && !x.race ? ' <button class="b alt" style="margin:5px 0 0 6px" onclick="openMoveSession(\'' + d + '\',\'' + x.kind + '\',' + x.index + ',this)">Déplacer</button>' : '') + '</div>');
+  const done = activities.map(a => '<div class="m">✓ ' + esc(a.name || a.title || 'Activité réalisée') + '</div>');
   panel.hidden = false;
   panel.innerHTML = '<b>' + esc(dayLabel(d)) + '</b>' + (offs.includes(d) ? ' · OFF' : '') +
-    (lines.length ? lines.join('') : '<div class="m">Aucune séance planifiée ce jour.</div>') +
+    (lines.length || done.length ? lines.concat(done).join('') : '<div class="m">Aucune séance planifiée ce jour.</div>') +
+    '<div id="move-session-form"></div>' +
     '<button class="b alt" style="margin-top:10px" onclick="askCoachForDay(\'' + d + '\')">Demander une modification au coach</button>';
+}
+function openMoveSession(source,kind,index,btn) {
+  const {w} = daySessions(source);
+  if (!w) return;
+  const session = kind === 'run' ? w.runs[index] : (w.coachSessions || [])[index];
+  if (!session || source < todayIso()) return;
+  const panel = btn.closest('.day-info');
+  const form = panel && panel.querySelector('#move-session-form');
+  if (!form) return;
+  const options = Array.from({length:7},(_,i)=>isoOf(w.t+i*DAY)).filter(d => d >= todayIso() && d !== source && !offs.includes(d));
+  form.innerHTML = '<div class="adv" style="margin-top:10px"><b>Déplacer : ' + esc(session.t || session.title || 'Séance') + '</b>' +
+    '<label for="move-target">Nouveau jour (même semaine)</label><select id="move-target">' +
+    options.map(d=>'<option value="'+d+'">'+esc(dayLabel(d))+'</option>').join('') + '</select>' +
+    (!options.length ? '<div class="m">Aucun jour disponible.</div>' : '<button class="b" style="margin-top:10px" onclick="confirmMoveSession(\''+source+'\',\''+kind+'\','+index+',this)">Confirmer le déplacement</button>') +
+    ' <button class="b alt" style="margin-top:10px" onclick="this.closest(\'#move-session-form\').innerHTML=\'\'">Annuler</button></div>';
+}
+function confirmMoveSession(source,kind,index,btn) {
+  const form = btn.closest('#move-session-form');
+  const target = form && form.querySelector('#move-target') && form.querySelector('#move-target').value;
+  const w = plan && plan.weeks && plan.weeks.find(x => x.t === weekStart(source+'T00:00:00Z'));
+  if (!w || !target || target === source || target < todayIso() || offs.includes(target) || weekStart(target+'T00:00:00Z') !== w.t) return alert('Jour de destination invalide.');
+  const session = kind === 'run' ? w.runs[index] : (w.coachSessions || [])[index];
+  if (!session) return alert('Séance introuvable.');
+  if (kind === 'run' && session.race) return alert('Une course officielle ne peut pas être déplacée ici.');
+  if (kind === 'run') {
+    const assigned = assignDays(w).find(r=>r.t===session.t && r.iso===source);
+    if (!assigned || assigned.done) return alert('Cette séance est déjà réalisée ou a changé.');
+  } else if (session.date !== source) return alert('Cette séance a changé. Rechargez le calendrier.');
+  const occupied = assignDays(w).some(r=>r.iso===target && !(kind==='run' && r.t===session.t && r.iso===source)) ||
+    (w.coachSessions || []).some((r,i)=>r.date===target && !(kind==='other' && i===index));
+  if (occupied && !confirm('Une autre séance est déjà prévue ce jour. Déplacer quand même ?')) return;
+  if (kind === 'run') { w.runs[index].iso = target; w.runs[index].d = dayLabel(target); }
+  else {
+    w.coachSessions[index].date = target;
+    w.strengthSessions = w.coachSessions.filter(x=>x.sport==='strength');
+  }
+  save(KP,plan);
+  paint();
 }
 function askCoachForDay(d) {
   goTab('coach');
@@ -1756,7 +1806,7 @@ function homeCurrentWeek(t, w) {
   if (w) {
     const asg = assignDays(w), done = runKmWeek(t), bd = bikeMinWeek(t);
     h += (w.note ? '<div class="m" style="margin-top:8px">' + esc(w.note) + '</div>' : '') + weekStrip(w) +
-      '<div class="m" style="margin:-4px 0 8px">Touchez un jour pour consulter ses séances. Pour le passer en repos ou modifier le planning, demandez au coach.</div>' +
+      '<div class="m" style="margin:-4px 0 8px">Touchez un jour pour consulter ses séances. Utilisez « Déplacer » pour changer le jour d’une séance, ou demandez au coach pour adapter son contenu.</div>' +
       '<div>Course : <b>' + done.toFixed(0) + '</b> / ' + w.vol + ' km</div>' +
       '<div class="bar"><div style="width:' + Math.min(100,done/Math.max(1,w.vol)*100) + '%"></div></div>' +
       asg.map(r => sessRow(r,r.done,r.iso ? (r.done?'Fait · ':'') + dayLabel(r.iso) : 'À replacer (aucun jour disponible)')).join('') + bikeRow(w,bd);
