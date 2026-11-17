@@ -1179,6 +1179,7 @@ Actions possibles :
 - days_off : réserver un ou plusieurs jours de repos futurs, dates au format AAAA-MM-JJ.
 - add_absence : enregistrer une absence réelle avec name, start, end, runPct (0 à 100) et bike (booléen).
 - add_goal : ajouter une course réellement mentionnée par l'utilisateur, avec name, date, runKm, rideKm, gtype (trail/combo/ride) et prio (A/B/C).
+- add_session : AJOUTER une nouvelle séance dans une semaine existante, sans remplacer les autres. Format : do=add_session, date (AAAA-MM-JJ), sport (run|bike|strength), type (easy|quality|long), title, distanceKm (obligatoire pour run), durationMin (obligatoire pour strength), details, workout (objet structuré ou null). Une demande explicite de l’athlète pour un jour habituellement indisponible peut être acceptée comme exception en le signalant. Ne touche jamais aux séances réalisées ni aux courses.
 - edit_session : modifier une séance future de course, vélo ou renforcement visible dans le planning. Renseigne sport (run|bike|strength), sessionDate, sessionTitle exacts, date (dans la même semaine), newTitle, newKm (course/vélo) ou newDurationMin (vélo/renforcement), details et workout (structure complète ou null). Mets null pour les champs non modifiés. Ne crée pas de séance et ne modifie jamais une séance réalisée.
 Pour toute séance de course ou vélo de fractionné, fournis workout avec des étapes structurées. Pour le renforcement, fournis workout.exercises avec les exercices, séries, répétitions, repos et tempo.
 - replace_week : remplacer uniquement le contenu d'une semaine future précise, sans modifier les autres semaines ni les objectifs. Format : weekStart (lundi AAAA-MM-JJ), kind (base|spec|recup|taper|race|post), phase, targetRunKm, note, sessions (tableau de séances run|bike|strength avec date, sport, type, title, distanceKm et/ou durationMin, details et workout facultatif). Respecte les jours OFF, la récupération et les contraintes. Cette action doit être proposée puis validée.
@@ -1420,6 +1421,7 @@ function validAct(a) {
   if (a.do === 'add_goal') return d(a.date) && typeof a.name === 'string' && a.name.trim() && Number.isFinite(+a.runKm) && +a.runKm >= 0 && Number.isFinite(+a.rideKm) && +a.rideKm >= 0 && ['trail', 'combo', 'ride'].includes(a.gtype) && ['A', 'B', 'C'].includes(a.prio);
   if (a.do === 'days_off') return Array.isArray(a.dates) && a.dates.length > 0 && a.dates.every(x => d(x) && x >= todayIso());
   if (a.do === 'scale_week') return d(a.week) && Number.isFinite(+a.factor) && +a.factor >= 0.3 && +a.factor <= 1.2 && weekStart(a.week + 'T00:00:00Z') >= curWeek();
+  if (a.do === 'add_session') return d(a.date) && a.date >= todayIso() && ['run','bike','strength'].includes(a.sport) && typeof a.title === 'string' && !!a.title.trim() && typeof a.type === 'string' && (a.sport !== 'run' || (Number.isFinite(+a.distanceKm) && +a.distanceKm > 0 && +a.distanceKm <= 100)) && (a.sport !== 'bike' || (Number.isFinite(+a.durationMin) && +a.durationMin >= 5) || (Number.isFinite(+a.distanceKm) && +a.distanceKm > 0)) && (a.sport !== 'strength' || (Number.isFinite(+a.durationMin) && +a.durationMin >= 5)) && (a.details == null || typeof a.details === 'string') && (a.workout == null || validWorkout(a.workout)) && !!plan && Array.isArray(plan.weeks) && plan.weeks.some(w => w.t === weekStart(a.date + 'T00:00:00Z'));
   if (a.do === 'edit_session') return d(a.sessionDate) && d(a.date) && a.sessionDate >= todayIso() && a.date >= todayIso() && !offs.includes(a.date) && weekStart(a.sessionDate + 'T00:00:00Z') === weekStart(a.date + 'T00:00:00Z') && ['run','bike','strength'].includes(a.sport || 'run') && typeof a.sessionTitle === 'string' && a.sessionTitle.trim() && (a.newTitle === null || typeof a.newTitle === 'string') && (a.newKm === null || (Number.isFinite(+a.newKm) && +a.newKm >= 0 && +a.newKm <= 100)) && (a.newDurationMin === null || (Number.isFinite(+a.newDurationMin) && +a.newDurationMin >= 5 && +a.newDurationMin <= 600)) && (a.details === null || typeof a.details === 'string') && (a.workout === null || validWorkout(a.workout));
   if (a.do === 'replace_week') return d(a.weekStart) && new Date(a.weekStart + 'T00:00:00Z').getUTCDay() === 1 && weekStart(a.weekStart + 'T00:00:00Z') >= curWeek() && ['base','spec','recup','taper','race','post'].includes(a.kind) && typeof a.phase === 'string' && a.phase.trim() && Number.isFinite(+a.targetRunKm) && +a.targetRunKm >= 0 && +a.targetRunKm <= 200 && Array.isArray(a.sessions) && a.sessions.length <= 12 && a.sessions.every(x => x && d(x.date) && x.date >= todayIso() && weekStart(x.date + 'T00:00:00Z') === weekStart(a.weekStart + 'T00:00:00Z') && ['run','bike','strength'].includes(x.sport) && typeof x.title === 'string' && x.title.trim() && (x.sport !== 'run' || (Number.isFinite(+x.distanceKm) && +x.distanceKm >= 0 && +x.distanceKm <= 100)) && (x.sport !== 'bike' || Number.isFinite(+x.durationMin) || Number.isFinite(+x.distanceKm)) && (x.details == null || typeof x.details === 'string') && (x.workout == null || validWorkout(x.workout))) && Math.abs(a.sessions.filter(x => x.sport === 'run').reduce((n,x)=>n+(+x.distanceKm||0),0) - (+a.targetRunKm)) <= 1.5;
   return false;
@@ -1427,6 +1429,7 @@ function validAct(a) {
 const actLabel = a => a.do === 'add_absence' ? 'Ajouter l’absence « ' + a.name + ' » (' + fmtD(a.start) + ' → ' + fmtD(a.end) + ', course ' + clamp(+a.runPct || 0, 0, 100) + ' %)' 
   : a.do === 'add_goal' ? 'Ajouter la course « ' + a.name + ' » (' + fmtD(a.date) + ')'
   : a.do === 'days_off' ? 'Marquer OFF : ' + a.dates.map(x => dayLabel(x)).join(', ')
+  : a.do === 'add_session' ? 'Ajouter « ' + a.title + ' » le ' + fmtD(a.date) + ' (' + (a.sport === 'run' ? a.distanceKm + ' km' : (a.durationMin || 0) + ' min') + ')'
   : a.do === 'edit_session' ? 'Modifier « ' + a.sessionTitle + ' » le ' + fmtD(a.sessionDate) + ' → ' + (a.newTitle || a.sessionTitle) + ' le ' + fmtD(a.date) + (a.newKm !== null ? ' · ' + a.newKm + ' km' : '') + (a.newDurationMin != null ? ' · ' + a.newDurationMin + ' min' : '')
   : a.do === 'replace_week' ? 'Remplacer uniquement la semaine du ' + fmtS(weekStart(a.weekStart)) + ' · ' + a.sessions.length + ' séances · ' + a.targetRunKm + ' km de course'
   : 'Semaine du ' + fmtS(weekStart(a.week)) + ' : volume × ' + clamp(+a.factor, 0.3, 1.2);
@@ -1519,6 +1522,14 @@ function applyAct(mi, ai) {
   if (!Array.isArray(m.applied)) m.applied = [];
   if (m.applied[ai]) return;
   const a = m.actions[ai];
+  if (a.do === 'add_session') {
+    const w = plan && plan.weeks.find(x => x.t === weekStart(a.date + 'T00:00:00Z'));
+    if (!w) return alert('La semaine demandée n’existe pas dans le programme actuel.');
+    if (a.date < todayIso()) return alert('Impossible d’ajouter une séance dans le passé.');
+    if (offs.includes(a.date) && !confirm('Ce jour est actuellement marqué OFF. Ajouter quand même cette séance à titre exceptionnel ?')) return;
+    const duplicate = (w.runs || []).some(x => x.iso === a.date && x.t === a.title) || (w.coachSessions || []).some(x => x.date === a.date && x.title === a.title && x.sport === a.sport);
+    if (duplicate) return alert('Cette séance figure déjà dans le programme.');
+  }
   if (a.do === 'edit_session') {
     const w = plan && plan.weeks.find(x => x.t === weekStart(a.sessionDate + 'T00:00:00Z'));
     const sport = a.sport || 'run';
@@ -1530,6 +1541,20 @@ function applyAct(mi, ai) {
   else if (a.do === 'add_goal') goals.push({ id: 'g' + Date.now() + ai, name: a.name, type: a.gtype, date: a.date, runKm: +a.runKm || 0, rideKm: +a.rideKm || 0, elev: '', prio: a.prio, img: IMGS[goals.length % 3], confirmed: true }), save(KG, goals);
   else if (a.do === 'days_off') { a.dates.forEach(d => { if (d >= todayIso() && !offs.includes(d)) offs.push(d) }); save(KO, offs) }
   else if (a.do === 'scale_week') { adj[isoOf(weekStart(a.week))] = clamp(+a.factor, 0.3, 1.2); save(KJ, adj) }
+  else if (a.do === 'add_session') {
+    const w = plan.weeks.find(x => x.t === weekStart(a.date + 'T00:00:00Z'));
+    if (a.sport === 'run') {
+      w.runs = w.runs || [];
+      w.runs.push({k:a.type === 'quality' ? 'q' : a.type === 'long' ? 'l' : 'e', d:dayLabel(a.date), iso:a.date, t:a.title, km:+a.distanceKm, x:a.details || '', workout:a.workout || null, race:false});
+      w.vol = w.runs.reduce((n,x)=>n+(+x.km||0),0);
+    } else {
+      w.coachSessions = w.coachSessions || [];
+      w.coachSessions.push({date:a.date, sport:a.sport, type:a.type, title:a.title, distanceKm:a.distanceKm == null ? undefined : +a.distanceKm, durationMin:a.durationMin == null ? undefined : +a.durationMin, details:a.details || '', workout:a.workout || null});
+      if (a.sport === 'strength') w.strengthSessions = w.coachSessions.filter(x=>x.sport==='strength');
+    }
+    w.coachManaged = true;
+    plan.source = 'coach'; plan.gen = Date.now(); save(KP,plan);
+  }
   else if (a.do === 'replace_week') {
     const wt = weekStart(a.weekStart + 'T00:00:00Z');
     const w = plan && plan.weeks.find(x => x.t === wt);
