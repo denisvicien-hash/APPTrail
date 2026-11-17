@@ -283,7 +283,7 @@ const load = (k, d) => { try { const v = JSON.parse(localStorage.getItem(k)); re
 const save = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)) } catch (e) { log('Stockage local plein ou indisponible.') } };
 let cfg = load(KC, {}), acts = load(KA, []), goals = load(KG, null), plan = load(KP, null), prof = load(KF, {}), absences = load(KB, null),
   offs = load(KO, []), feels = load(KR, []), maint = load(KM, []), gears = load(KS, []), chat = load(KH, []), adj = load(KJ, {}), sessEdits = load(KX, {});
-let tab = 'home', filt = 'all', chatBusy = false, progressWeeks = 12; const openK = {}, imgSel = {}, imgTmp = {};
+let tab = 'home', filt = 'all', chatBusy = false, progressWeeks = 12, homeWeekOffset = 0; const openK = {}, imgSel = {}, imgTmp = {};
 let chatThreads = load(KTH, []), archivedChats = load(KAH, []), activeChatId = load(KAC, '');
 // Migration de l'ancien historique unique vers une conversation active indépendante.
 if (!chatThreads.length) {
@@ -1048,7 +1048,7 @@ function askCoachForDay(d) {
 }
 function weekStrip(w) {
   const t = w.t, today = todayIso(), cur = curWeek();
-  const asg = t >= cur ? assignDays(w) : [], by = {};
+  const asg = assignDays(w), by = {};
   asg.forEach(r => { if (r.iso) (by[r.iso] = by[r.iso] || []).push(r) });
   // Afficher les séances de renforcement planifiées par le coach sur leur jour.
   const strengthByDay = {};
@@ -1825,7 +1825,8 @@ function currentWeekActuals(t) {
 }
 function homeCurrentWeek(t, w) {
   const label = 'Semaine du ' + fmtS(t);
-  let h = '<div class="card"><h2>Planning de la semaine en cours</h2><div class="m">' + label + '</div>';
+  const isCurrent = t === curWeek();
+  let h = '<div class="card"><div class="row" style="border:0;padding:0;align-items:center"><h2 style="margin:0">Planning de la semaine</h2><div style="display:flex;gap:8px;align-items:center"><button class="b alt" style="padding:7px 11px" aria-label="Semaine précédente" onclick="changeHomeWeek(-1)">‹</button><button class="b alt" style="padding:7px 11px" aria-label="Semaine suivante" onclick="changeHomeWeek(1)"' + (isCurrent ? ' disabled' : '') + '>›</button></div></div><div class="m" style="margin-top:8px">' + label + (isCurrent ? ' · Cette semaine' : '') + '</div>';
   if (w) {
     const asg = assignDays(w), done = runKmWeek(t), bd = bikeMinWeek(t);
     h += (w.note ? '<div class="m" style="margin-top:8px">' + esc(w.note) + '</div>' : '') + weekStrip(w) +
@@ -1840,10 +1841,15 @@ function homeCurrentWeek(t, w) {
   // Les activités réalisées sont déjà visibles dans les cases des jours (weekStrip).
   return h + '</div>';
 }
+function changeHomeWeek(delta) {
+  homeWeekOffset = Math.min(0, Math.max(-52, homeWeekOffset + delta));
+  paint();
+}
 function vHome() {
   const cur = curWeek(); let h = raceCards();
-  const thisWeek = plan && Array.isArray(plan.weeks) ? plan.weeks.find(x => x.t === cur) : null;
-  h += homeCurrentWeek(cur, thisWeek);
+  const displayedWeek = cur + homeWeekOffset * WK;
+  const thisWeek = plan && Array.isArray(plan.weeks) ? plan.weeks.find(x => x.t === displayedWeek) : null;
+  h += homeCurrentWeek(displayedWeek, thisWeek);
   if (!plan || !plan.weeks.length) {
     return h + '<div class="card"><h2>Mon plan</h2><div>Aucun plan pour l’instant.</div>' +
       (acts.length ? '' : '<div class="m">Synchronisez d’abord vos activités (Réglages) pour que le plan parte de votre niveau réel.</div>') +
