@@ -965,6 +965,21 @@ function assignDays(w) {
   }
   return res.sort((a, b) => (a.iso || '9').localeCompare(b.iso || '9'));
 }
+// Séances de renforcement : source IA, ancien format, ou programme local généré.
+function homeStrengthEntries(w) {
+  if (!w) return [];
+  const src = Array.isArray(w.coachSessions) && w.coachSessions.some(x => x && x.sport === 'strength')
+    ? w.coachSessions.filter(x => x && x.sport === 'strength')
+    : Array.isArray(w.strengthSessions) ? w.strengthSessions : [];
+  if (src.length) return src.filter(x => x && typeof x.date === 'string').map(x => ({...x, date:x.date.slice(0,10), legacy:false}));
+  // Les anciens programmes locaux contiennent du renforcement indicatif, sans date enregistrée.
+  // Afficher ces séances comme suggestions, et non comme séances ajoutées par le coach.
+  if (w.coachManaged) return [];
+  const at = (weekday, title, durationMin) => ({date:isoOf(w.t + weekday*DAY), title, durationMin, sport:'strength', legacy:true});
+  if (w.kind === 'race' || w.kind === 'post') return [];
+  if (w.kind === 'taper' || w.kind === 'recup' || String(w.phase||'').startsWith('Voyage')) return [at(1,'Renforcement léger (indicatif)',15)];
+  return [at(1,'Renforcement A (indicatif)',25),at(3,'Renforcement B (indicatif)',20)];
+}
 // Consultation du calendrier et déplacement manuel confirmé, sans appel au coach.
 function daySessions(d) {
   const w = plan && Array.isArray(plan.weeks) ? plan.weeks.find(x => x.t === weekStart(d + 'T00:00:00Z')) : null;
@@ -976,6 +991,7 @@ function daySessions(d) {
     if (i >= 0) items.push({kind:'run', index:i, title:r.t, done:r.done, race:!!r.race, km:r.km});
   });
   (w.coachSessions || []).forEach((r,i) => { if (r.date === d) items.push({kind:'other', index:i, title:r.title || 'Séance', sport:r.sport}); });
+  homeStrengthEntries(w).filter(x => x.legacy && x.date === d).forEach(x => items.push({kind:'suggestion', title:x.title, sport:'strength', durationMin:x.durationMin}));
   return {w,items};
 }
 function showDayDetails(el,d) {
@@ -995,7 +1011,7 @@ function showDayDetails(el,d) {
   const activities = acts.filter(a => a.date && a.date.slice(0,10) === d);
   const editable = d >= todayIso();
   const lines = items.map(x => '<div class="m" style="padding:7px 0">' + (x.kind === 'run' ? '🏃 ' : x.sport === 'strength' ? '💪 ' : x.sport === 'bike' ? '🚲 ' : '• ') + esc(x.title) + (x.km ? ' · ' + x.km + ' km' : '') +
-    (editable && !x.done && !x.race ? ' <button class="b alt" style="margin:5px 0 0 6px" onclick="openMoveSession(\'' + d + '\',\'' + x.kind + '\',' + x.index + ',this)">Déplacer</button>' : '') + '</div>');
+    (editable && x.kind !== 'suggestion' && !x.done && !x.race ? ' <button class="b alt" style="margin:5px 0 0 6px" onclick="openMoveSession(\'' + d + '\',\'' + x.kind + '\',' + x.index + ',this)">Déplacer</button>' : '') + '</div>');
   const done = activities.map(a => '<div class="m">✓ ' + esc(a.name || a.title || 'Activité réalisée') + '</div>');
   panel.hidden = false;
   panel.innerHTML = '<b>' + esc(dayLabel(d)) + '</b>' + (offs.includes(d) ? ' · OFF' : '') +
@@ -1052,8 +1068,8 @@ function weekStrip(w) {
   asg.forEach(r => { if (r.iso) (by[r.iso] = by[r.iso] || []).push(r) });
   // Afficher les séances de renforcement planifiées par le coach sur leur jour.
   const strengthByDay = {};
-  (Array.isArray(w.coachSessions) ? w.coachSessions : []).forEach(r => {
-    if (r && r.sport === 'strength' && typeof r.date === 'string' && weekStart(r.date + 'T00:00:00Z') === t) {
+  homeStrengthEntries(w).forEach(r => {
+    if (r && typeof r.date === 'string' && weekStart(r.date + 'T00:00:00Z') === t) {
       (strengthByDay[r.date] = strengthByDay[r.date] || []).push(r);
     }
   });
@@ -1066,7 +1082,7 @@ function weekStrip(w) {
     h += '<div class="dy' + (d === today ? ' today' : '') + (off ? ' off' : '') + (past ? ' past' : '') + '"' + ' onclick="showDayDetails(this,\'' + d + '\')"' + '>' +
       '<b>' + DL[i] + '</b><div class="dd">' + Number(d.slice(8, 10)) + '</div>' + (off ? '<div class="tg">OFF</div>' : '') +
       (by[d] || []).map(r => '<div class="pl' + (r.done ? ' dn2' : '') + '">' + LBL[r.k] + '</div>').join('') +
-      (strengthByDay[d] || []).map(() => '<div class="pl" style="color:var(--txt)">Renfo</div>').join('') +
+      (strengthByDay[d] || []).map(r => '<div class="pl" style="color:var(--txt)">Renfo' + (r.durationMin ? ' · ' + esc(r.durationMin) + ' min' : '') + '</div>').join('') +
       (rk > 0 ? '<div class="av run">🏃' + Math.round(rk) + '</div>' : '') + (bk > 0 ? '<div class="av ride">🚲' + Math.round(bk) + '</div>' : '') + '</div>';
   }
   return h + '</div><div class="day-info adv" hidden style="margin:8px 0 12px"></div>';
@@ -1857,7 +1873,8 @@ function homeCurrentWeek(t, w) {
     h += (w.note ? '<div class="m" style="margin-top:8px">' + esc(w.note) + '</div>' : '') + weekStrip(w) +
       '<div>Course : <b>' + done.toFixed(0) + '</b> / ' + w.vol + ' km</div>' +
       '<div class="bar"><div style="width:' + Math.min(100,done/Math.max(1,w.vol)*100) + '%"></div></div>' +
-      asg.map(r => sessRow(r,r.done,r.iso ? (r.done?'Fait · ':'') + dayLabel(r.iso) : 'À replacer (aucun jour disponible)')).join('') + bikeRow(w,bd);
+      asg.map(r => sessRow(r,r.done,r.iso ? (r.done?'Fait · ':'') + dayLabel(r.iso) : 'À replacer (aucun jour disponible)')).join('') +
+      homeStrengthEntries(w).map(r => '<div class="sess"><div class="n">' + esc(r.title || 'Renforcement') + '</div><div class="m">' + esc(dayLabel(r.date)) + (r.durationMin ? ' · ' + esc(r.durationMin) + ' min' : '') + '</div></div>').join('') + bikeRow(w,bd);
   } else {
     // Une semaine sans plan doit quand même afficher ses sept jours et ses activités.
     h += weekStrip({t, runs:[], coachSessions:[]});
