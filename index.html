@@ -1668,7 +1668,7 @@ function coachPage() {
   h += '<div class="coach-shortcuts">' +
     '<button onclick="quickCoach(\'Fais le point sur ma semaine et mes prochaines séances.\')">▦ &nbsp;Faire le point sur ma semaine</button>' +
     '<button onclick="quickCoach(\'Je suis fatigué / j’ai des courbatures. Aide-moi à adapter la charge.\')">♡ &nbsp;Analyser ma fatigue</button>' +
-    '<button onclick="quickCoach(\'Propose-moi une séance de renforcement adaptée à ma préparation trail et à ma récupération.\')">✚ &nbsp;Renforcement musculaire</button>' +
+    '<button onclick="quickCoach(\'Propose-moi une séance de renforcement adaptée à ma préparation trail et à ma récupération. Indique la durée totale en minutes, échauffement, exercices, repos, transitions et retour au calme compris.\')">✚ &nbsp;Renforcement musculaire</button>' +
     '<button onclick="quickCoach(\'Aide-moi à préparer mon prochain trail en tenant compte de mon programme.\')">⌁ &nbsp;Préparer mon trail</button></div></section>';
   h += '<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><h2 style="margin:0">Discussion en cours</h2><span class="chip">' + chat.length + ' messages</span></div>';
   h += '<div class="chat-tools" style="margin-top:10px"><button class="b alt" onclick="newChat()">＋ Nouvelle discussion</button><button class="b alt" onclick="archiveOnly()">Archiver</button><button class="b alt" onclick="clearChat()">Vider</button></div>' + '<button class="b" style="width:100%;margin-top:10px" onclick="requestPlanChange()" ' + (chatBusy || !cfg.aiEndpoint ? 'disabled' : '') + '>✓ Construire / revoir tout mon programme</button><small class="m" style="display:block;margin-top:5px">Modèle sélectionné : '+coachModelName()+'. Les programmes longs peuvent être coûteux ou incomplets avec Luna. Le coach prépare une nouvelle version complète à partir de vos objectifs, de vos activités et de notre discussion. Rien ne change sans votre validation.</small>';
@@ -1794,7 +1794,7 @@ function sessRow(r, ok, dt) {
 function strengthBlock(w) {
   if (Array.isArray(w.strengthSessions)) {
     if (!w.strengthSessions.length) return '';
-    return w.strengthSessions.map(x => '<div class="sess"><div class="n">' + esc(x.title) + '</div><div class="m">' + dayLabel(x.date) + (x.durationMin ? ' · ' + x.durationMin + ' min' : '') + '</div>' + (x.details ? '<div class="m">' + esc(x.details) + '</div>' : '') + workoutMarkup(x.workout, x.details) + '</div>').join('');
+    return w.strengthSessions.map(x => '<div class="sess"><div class="n">' + esc(x.title) + '</div><div class="m">' + dayLabel(x.date) + (x.durationMin ? ' · durée totale : ' + x.durationMin + ' min' : '') + '</div>' + (x.details ? '<div class="m">' + esc(x.details) + '</div>' : '') + workoutMarkup(x.workout, x.details) + '</div>').join('');
   }
   // Keep strength deliberately light in recovery, taper and race weeks.
   if (w.kind === 'race') return '<div class="sess"><div class="n">Renforcement</div><div class="m">Pas de séance de force cette semaine : priorité à la fraîcheur et à la course.</div></div>';
@@ -1809,7 +1809,7 @@ function strengthBlock(w) {
 function bikeRow(w, done) {
   const cm = w.t <= curWeek() ? commuteWeek(w.t) : { n: 0, km: 0 };
   const plannedBike = Array.isArray(w.coachSessions) ? w.coachSessions.filter(x => x.sport === 'bike') : [];
-  const customBike = plannedBike.map(x => '<div class="m"><b class="ride">' + esc(x.title) + '</b> · ' + dayLabel(x.date) + (x.durationMin ? ' · ' + x.durationMin + ' min' : '') + (x.distanceKm ? ' · ' + x.distanceKm + ' km' : '') + (x.details ? '<br>' + esc(x.details) : '') + workoutMarkup(x.workout, x.details) + '</div>').join('');
+  const customBike = plannedBike.map(x => '<div class="m"><b class="ride">' + esc(x.title) + '</b> · ' + dayLabel(x.date) + (x.durationMin ? ' · durée totale : ' + x.durationMin + ' min' : '') + (x.distanceKm ? ' · ' + x.distanceKm + ' km' : '') + (x.details ? '<br>' + esc(x.details) : '') + workoutMarkup(x.workout, x.details) + '</div>').join('');
   if (!w.bikeMin && !w.brick && !cm.n && !customBike) return '';
   let s = '<div class="sess">';
   if (cm.n) s += '<div class="n ride">Vélotaf : ' + cm.n + ' trajet' + (cm.n > 1 ? 's' : '') + ' · ' + cm.km.toFixed(0) + ' km</div>';
@@ -2173,29 +2173,31 @@ function vCfg() {
 }
 
 const EXLIB = [["Squat", "Jambes", "Débutant", "Pieds largeur des épaules, recule les hanches, fléchis les genoux puis remonte en poussant dans le sol.", "Garde les talons au sol et les genoux alignés avec les pieds.", "bodyweight squat"], ["Fente arrière", "Jambes", "Débutant", "Recule un pied, descends verticalement puis reviens debout. Alterne les jambes.", "Commence avec une faible amplitude et un appui si nécessaire.", "reverse lunge"], ["Pont fessier", "Hanches", "Débutant", "Allongé sur le dos, genoux pliés, pousse dans les talons pour lever le bassin.", "Ne cambre pas exagérément le bas du dos.", "glute bridge"], ["Montée sur marche", "Jambes", "Débutant", "Pose un pied sur une marche stable, monte sans élan puis redescends lentement.", "Choisis une marche basse et garde le genou stable.", "step up exercise"], ["Mollets debout", "Jambes", "Débutant", "Debout, monte lentement sur la pointe des pieds, puis redescends en contrôle.", "Évite de rebondir ; utilise un support pour l’équilibre.", "standing calf raise"], ["Gainage ventral", "Tronc", "Débutant", "Appui sur les avant-bras et les pointes de pieds, corps aligné.", "Respire normalement, évite de laisser tomber le bassin.", "forearm plank"], ["Gainage latéral", "Tronc", "Intermédiaire", "Sur un avant-bras, soulève le bassin en gardant le corps aligné.", "Version facile : genoux au sol.", "side plank"], ["Bird-dog", "Tronc", "Débutant", "À quatre pattes, tends lentement bras droit et jambe gauche puis alterne.", "Garde le bassin stable sans tourner le dos.", "bird dog exercise"], ["Dead bug", "Tronc", "Débutant", "Sur le dos, bras et jambes levés, éloigne lentement bras et jambe opposés.", "Garde les lombaires confortablement stables.", "dead bug exercise"], ["Pompes inclinées", "Haut du corps", "Débutant", "Mains sur un support stable, fléchis les coudes puis repousse.", "Plus le support est haut, plus l’exercice est accessible.", "incline push up"], ["Soulevé de terre unilatéral sans charge", "Hanches", "Intermédiaire", "En appui sur une jambe, bascule le buste vers l’avant en reculant l’autre jambe.", "Garde le dos neutre et commence près d’un mur.", "single leg romanian deadlift bodyweight"], ["Chaise contre un mur", "Jambes", "Débutant", "Dos au mur, descends en position assise partielle et tiens quelques secondes.", "Adapte l’angle des genoux à ton confort.", "wall sit exercise"]];
-const EXVIDEOS = {"Squat": "nEQQle9-0NA", "Fente arrière": "lKhZvT_NkOs", "Pont fessier": "SKOMwg1JLrU", "Gainage ventral": "xhk1JkbF2lg", "Gainage latéral": "ZpBJIRLGEgg", "Bird-dog": "ZdAHe9_HeEw", "Dead bug": "bxn9FBrt4-A", "Pompes inclinées": "0JUrOH--Kdk", "Soulevé de terre unilatéral sans charge": "6pEL3KxnlEo", "Chaise contre un mur": "XULOKw4E4P4"};
+// Source pédagogique unique : Physiotutors. Les liens ouvrent une recherche ciblée ;
+// aucune vidéo précise n'est attribuée à tort à ce créateur sans vérification.
+const EXERCISE_CREATOR = 'Physiotutors';
+const EXERCISE_CREATOR_SEARCH = {
+  'Squat':'squat', 'Fente arrière':'reverse lunge', 'Pont fessier':'glute bridge',
+  'Montée sur marche':'step up', 'Mollets debout':'calf raise',
+  'Gainage ventral':'plank', 'Gainage latéral':'side plank',
+  'Bird-dog':'bird dog', 'Dead bug':'dead bug', 'Pompes inclinées':'incline push up',
+  'Soulevé de terre unilatéral sans charge':'single leg romanian deadlift',
+  'Chaise contre un mur':'wall sit'
+};
 let exlibFilter='Tous';
 function setExlibFilter(f){exlibFilter=f;paint()}
-function playExerciseVideo(i){
-  const e=EXLIB[i], id=e && EXVIDEOS[e[0]], el=document.getElementById('exvideo-'+i);
-  if(!id || !el)return;
-  document.querySelectorAll('.exlib-video iframe').forEach(f=>{if(f.parentElement!==el) f.parentElement.innerHTML='<button class="b alt" onclick="playExerciseVideo('+f.parentElement.id.slice(8)+')">▶ Lire la vidéo ici</button>'});
-  el.innerHTML='<iframe title="Démonstration : '+esc(e[0])+'" src="https://www.youtube-nocookie.com/embed/'+id+'?rel=0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen loading="lazy"></iframe>';
-}
 function vExercises(){
   const filters=['Tous','Jambes','Hanches','Tronc','Haut du corps'];
   const list=EXLIB.filter(e=>exlibFilter==='Tous'||e[1]===exlibFilter);
-  return '<div class="card"><h2>Bibliothèque de renforcement</h2><p>Exercices simples utiles pour compléter la course et le vélo. Consulte la démonstration vidéo avant de commencer, puis privilégie une exécution lente et confortable.</p>'+
-    '<p class="m">Les vidéos disponibles se lisent directement dans MENDI. Appuie sur « Lire la vidéo » pour charger uniquement celle que tu veux voir. Deux exercices disposent encore d’un lien de recherche en attendant une démonstration vérifiée.</p>'+
+  return '<div class="card"><h2>Bibliothèque de renforcement</h2>'+
+    '<p>Une bibliothèque homogène : même présentation, mêmes rubriques et une seule source pédagogique proposée, <b>Physiotutors</b>.</p>'+
+    '<p class="m">Les liens recherchent une démonstration du mouvement chez ce créateur. Les vidéos individuelles ne sont pas encore vérifiées : aucun contenu d’un autre auteur n’est présenté comme provenant de Physiotutors.</p>'+
     '<div class="exlib-filter">'+filters.map(f=>'<button class="'+(f===exlibFilter?'active':'')+'" onclick="setExlibFilter('+JSON.stringify(f).replace(/"/g,'&quot;')+')">'+esc(f)+'</button>').join('')+'</div>'+
-    '<div class="exlib-list">'+list.map(e=>'<article class="exlib-card"><h3>'+esc(e[0])+'</h3><small>'+esc(e[1])+' · '+esc(e[2])+'</small><p>'+esc(e[3])+'</p><p class="m"><b>Point de vigilance :</b> '+esc(e[4])+'</p>'+
-    (EXVIDEOS[e[0]] ?
-      '<div class="exlib-video" id="exvideo-'+EXLIB.indexOf(e)+'"><button class="b alt" onclick="playExerciseVideo('+EXLIB.indexOf(e)+')">▶ Lire la vidéo ici</button></div>'+
-      '<a class="exlib-secondary" target="_blank" rel="noopener noreferrer" href="https://www.youtube.com/watch?v='+EXVIDEOS[e[0]]+'">Ouvrir sur YouTube</a>'
-      : '<p class="m">Vidéo intégrée à venir pour cet exercice.</p><a target="_blank" rel="noopener noreferrer" href="https://www.youtube.com/results?search_query='+encodeURIComponent(e[5]+' exercise technique demonstration')+'">Rechercher une démonstration</a>')+
+    '<div class="exlib-list">'+list.map(e=>'<article class="exlib-card"><h3>'+esc(e[0])+'</h3><small>'+esc(e[1])+' · '+esc(e[2])+'</small>'+
+    '<p><b>Exécution</b> · '+esc(e[3])+'</p><p class="m"><b>À surveiller</b> · '+esc(e[4])+'</p>'+
+    '<a class="b alt" style="display:inline-block;text-decoration:none" target="_blank" rel="noopener noreferrer" href="https://www.youtube.com/results?search_query='+encodeURIComponent('Physiotutors '+(EXERCISE_CREATOR_SEARCH[e[0]]||e[5]))+'">▶ Chercher la démonstration Physiotutors</a>'+
     '</article>').join('')+'</div>'+
-    '<p class="m" style="margin-top:15px">Commence par quelques répétitions maîtrisées. Arrête en cas de douleur inhabituelle. Pour un exercice prescrit par le coach mais absent de la bibliothèque, demande-lui une alternative ou une explication.</p>'+
-    '<p class="m">Référence complémentaire : <a href="https://www.acefitness.org/resources/everyone/exercise-library/" target="_blank" rel="noopener noreferrer">Bibliothèque d’exercices ACE Fitness</a>.</p></div>';
+    '<p class="m" style="margin-top:15px">Commence par quelques répétitions maîtrisées. En cas de douleur inhabituelle, arrête et demande conseil à un professionnel.</p></div>';
 }
 function vMore(){
   const items=[['profile','Mon profil','Informations personnelles et vélotaf'],['acts','Activités','Historique Strava et statistiques'],['gear','Matériel','Chaussures, vélos et équipements'],['exercises','Exercices de renforcement','Fiches pratiques et démonstrations vidéo'],['cfg','Réglages','Synchronisation, analyses et sauvegardes']];
