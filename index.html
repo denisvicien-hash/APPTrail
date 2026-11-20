@@ -1946,8 +1946,16 @@ function homeProgressChart() {
     if(showRun)svg+='<text x="32" y="'+(y+3)+'" font-size="10" text-anchor="end" fill="var(--mut)">'+Math.round(mr*i/4)+'</text>';
     if(showBike)svg+='<text x="329" y="'+(y+3)+'" font-size="10" fill="var(--mut)">'+Math.round(mb*i/4)+'</text>';
   }
-  if(showRun)svg+='<path d="'+path('run',mr)+'" fill="none" stroke="#8acb9b" stroke-width="2.6" stroke-linejoin="round"/>';
-  if(showBike)svg+='<path d="'+path('bike',mb)+'" fill="none" stroke="#80aee5" stroke-width="2.6" stroke-linejoin="round"/>';
+  // Remplissage très léger sous chaque courbe : dégradé qui s'efface vers l'axe horizontal.
+  svg+='<defs>'+
+    '<linearGradient id="homeRunArea" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#8acb9b" stop-opacity=".22"/><stop offset="100%" stop-color="#8acb9b" stop-opacity=".015"/></linearGradient>'+
+    '<linearGradient id="homeBikeArea" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#80aee5" stop-opacity=".18"/><stop offset="100%" stop-color="#80aee5" stop-opacity=".01"/></linearGradient>'+
+    '</defs>';
+  const area=(key,max)=>path(key,max)+' L'+X(11).toFixed(1)+' '+bottom+' L'+X(0).toFixed(1)+' '+bottom+' Z';
+  if(showRun)svg+='<path d="'+area('run',mr)+'" fill="url(#homeRunArea)" pointer-events="none"/>';
+  if(showBike)svg+='<path d="'+area('bike',mb)+'" fill="url(#homeBikeArea)" pointer-events="none"/>';
+  if(showRun)svg+='<path d="'+path('run',mr)+'" fill="none" stroke="#8acb9b" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>';
+  if(showBike)svg+='<path d="'+path('bike',mb)+'" fill="none" stroke="#80aee5" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>';
   data.forEach((d,i)=>{
     const label='Semaine du '+fmtS(d.t);
     const tip=label+' : course '+d.run.toFixed(1)+' km, vélo '+d.bike.toFixed(1)+' km';
