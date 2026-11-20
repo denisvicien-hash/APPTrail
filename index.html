@@ -1098,7 +1098,7 @@ function weekStrip(w) {
     const bk = day.filter(a => grp(a.type) === 'ride').reduce((s, a) => s + a.dist, 0) / 1000;
     h += '<div class="dy' + (d === today ? ' today' : '') + (off ? ' off' : '') + (past ? ' past' : '') + '"' + ' onclick="showDayDetails(this,\'' + d + '\')"' + '>' +
       '<b>' + DL[i] + '</b><div class="dd">' + Number(d.slice(8, 10)) + '</div>' + (off ? '<div class="tg">OFF</div>' : '') +
-      (by[d] || []).map(r => '<div class="pl' + (r.done ? ' dn2' : '') + '">' + LBL[r.k] + '</div>').join('') +
+      (by[d] || []).map(r => '<div class="pl' + (homeRunDone(r) ? ' dn2' : '') + '">' + LBL[r.k] + '</div>').join('') +
       (strengthByDay[d] || []).map(r => '<div class="pl" style="color:var(--txt)">Renfo' + (r.durationMin ? ' · ' + esc(r.durationMin) + ' min' : '') + '</div>').join('') +
       (rk > 0 ? '<div class="av run">🏃' + Math.round(rk) + '</div>' : '') + (bk > 0 ? '<div class="av ride">🚲' + Math.round(bk) + '</div>' : '') + '</div>';
   }
@@ -1884,6 +1884,52 @@ function currentWeekActuals(t) {
   }).join('');
   return h;
 }
+// Vue motivation : 12 semaines, kilomètres réels, axes distincts course/vélo.
+function homeProgressChart() {
+  const end = curWeek();
+  const weeks = Array.from({length:12},(_,i)=>end-(11-i)*WK);
+  const data = weeks.map(t=>{
+    const a=acts.filter(x=>x && typeof x.date==='string' && weekStart(x.date)===t);
+    const km=g=>a.filter(x=>grp(x.type)===g && !(/electric|ebike|e-bike|vae|assist/i.test(String(x.type||'')+' '+String(x.name||''))))
+      .reduce((v,x)=>v+Math.max(0,Number(x.dist)||0),0)/1000;
+    return {t,run:km('run'),bike:km('ride')};
+  });
+  const mr=Math.max(10,Math.ceil(Math.max(...data.map(x=>x.run))/10)*10);
+  const mb=Math.max(20,Math.ceil(Math.max(...data.map(x=>x.bike))/20)*20);
+  const left=38,right=322,top=16,bottom=145;
+  const X=i=>left+(right-left)*i/11;
+  const Y=(v,max)=>bottom-(bottom-top)*v/max;
+  const path=(key,max)=>data.map((v,i)=>(i?'L':'M')+X(i).toFixed(1)+' '+Y(v[key],max).toFixed(1)).join(' ');
+  let svg='<svg viewBox="0 0 360 180" style="width:100%;display:block" role="img" aria-label="Kilomètres de course à pied et de vélo sur douze semaines, deux échelles verticales">';
+  for(let i=0;i<=4;i++){
+    const y=bottom-(bottom-top)*i/4;
+    svg+='<line x1="'+left+'" x2="'+right+'" y1="'+y+'" y2="'+y+'" stroke="var(--mut)" opacity=".22"/>';
+    svg+='<text x="32" y="'+(y+3)+'" font-size="10" text-anchor="end" fill="var(--mut)">'+Math.round(mr*i/4)+'</text>';
+    svg+='<text x="329" y="'+(y+3)+'" font-size="10" fill="var(--mut)">'+Math.round(mb*i/4)+'</text>';
+  }
+  svg+='<path d="'+path('run',mr)+'" fill="none" stroke="#8acb9b" stroke-width="2.6" stroke-linejoin="round"/>';
+  svg+='<path d="'+path('bike',mb)+'" fill="none" stroke="#80aee5" stroke-width="2.6" stroke-linejoin="round"/>';
+  data.forEach((d,i)=>{
+    const tip='Semaine du '+fmtS(d.t)+' : course '+d.run.toFixed(1)+' km, vélo '+d.bike.toFixed(1)+' km';
+    for(const [key,max,color] of [['run',mr,'#8acb9b'],['bike',mb,'#80aee5']])
+      svg+='<circle cx="'+X(i)+'" cy="'+Y(d[key],max)+'" r="3.5" fill="'+color+'"><title>'+esc(tip)+'</title></circle>';
+    if(i===0||i===3||i===6||i===9||i===11)svg+='<text x="'+X(i)+'" y="162" font-size="10" text-anchor="middle" fill="var(--mut)">'+(i===11?'S0':'S-'+(11-i))+'</text>';
+  });
+  svg+='</svg>';
+  const total=k=>data.reduce((a,d)=>a+d[k],0).toFixed(0);
+  return '<div class="card"><h2>Ma progression · 12 semaines</h2>'+
+    '<div class="m" style="margin-bottom:9px"><span style="color:#8acb9b">●</span> Course · axe gauche &nbsp; <span style="color:#80aee5">●</span> Vélo · axe droit</div>'+
+    svg+'<div class="row" style="border:0;padding:0"><div><b>'+total('run')+' km</b><div class="m">Course à pied</div></div><div class="r"><b>'+total('bike')+' km</b><div class="m">Vélo</div></div></div>'+
+    '<div class="m" style="margin-top:8px">Distances réalisées · semaine en cours incluse · touchez un point pour le détail.</div></div>';
+}
+// Association prudente : même date et distance proche, sans toucher aux données du programme.
+function homeRunDone(r) {
+  if(r.done)return true;
+  if(!r.iso || r.iso>todayIso())return false;
+  const km=Number(r.km)||0;
+  return acts.some(a=>a && typeof a.date==='string' && a.date.slice(0,10)===r.iso && grp(a.type)==='run' &&
+    (km<=0 || Math.abs((Number(a.dist)||0)/1000-km)<=Math.max(1.5,km*.25)));
+}
 function homeCurrentWeek(t, w) {
   const label = 'Semaine du ' + fmtS(t);
   const isCurrent = t === curWeek();
@@ -1893,7 +1939,7 @@ function homeCurrentWeek(t, w) {
     h += (w.note ? '<div class="m" style="margin-top:8px">' + esc(w.note) + '</div>' : '') + weekStrip(w) +
       '<div>Course : <b>' + done.toFixed(0) + '</b> / ' + w.vol + ' km</div>' +
       '<div class="bar"><div style="width:' + Math.min(100,done/Math.max(1,w.vol)*100) + '%"></div></div>' +
-      asg.map(r => sessRow(r,r.done,r.iso ? (r.done?'Fait · ':'') + dayLabel(r.iso) : 'À replacer (aucun jour disponible)')).join('') +
+      asg.map(r => sessRow(r,homeRunDone(r),r.iso ? (homeRunDone(r)?'Fait · ':'') + dayLabel(r.iso) : 'À replacer (aucun jour disponible)')).join('') +
       homeStrengthEntries(w).map(r => '<div class="sess"><div class="n">' + esc(r.title || 'Renforcement') + '</div><div class="m">' + esc(dayLabel(r.date)) + (r.durationMin ? ' · ' + esc(r.durationMin) + ' min' : '') + '</div></div>').join('') + bikeRow(w,bd);
   } else {
     // Une semaine sans plan doit quand même afficher ses sept jours et ses activités.
@@ -1908,7 +1954,7 @@ function changeHomeWeek(delta) {
   paint();
 }
 function vHome() {
-  const cur = curWeek(); let h = raceCards();
+  const cur = curWeek(); let h = raceCards() + homeProgressChart();
   const displayedWeek = cur + homeWeekOffset * WK;
   const thisWeek = plan && Array.isArray(plan.weeks) ? plan.weeks.find(x => x.t === displayedWeek) : null;
   h += homeCurrentWeek(displayedWeek, thisWeek);
