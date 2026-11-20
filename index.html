@@ -1894,6 +1894,25 @@ function toggleHomeChartSport(sport) {
   }
   paint();
 }
+// Infobulle interactive, utilisable au toucher et au clavier.
+function showHomeChartTip(index) {
+  const tip=document.getElementById('home-chart-tooltip');
+  if(!tip)return;
+  const point=document.querySelector('[data-home-week="'+index+'"]');
+  if(!point)return;
+  const label=point.getAttribute('data-week-label')||'';
+  const run=Number(point.getAttribute('data-run-km')||0);
+  const bike=Number(point.getAttribute('data-bike-km')||0);
+  const fmt=v=>v.toFixed(1).replace('.',',')+' km';
+  const showRun=homeChartSport!=='bike',showBike=homeChartSport!=='run';
+  tip.innerHTML='<strong>'+esc(label)+'</strong>'+
+    (showRun?'<div><span style="color:#8acb9b">●</span> Course : <b>'+fmt(run)+'</b></div>':'')+
+    (showBike?'<div><span style="color:#80aee5">●</span> Vélo : <b>'+fmt(bike)+'</b></div>':'');
+  tip.style.display='block';
+  tip.style.left=Math.max(15,Math.min(85,Number(point.getAttribute('data-x-pct'))||50))+'%';
+  tip.style.top='5px';
+}
+function hideHomeChartTip(){const tip=document.getElementById('home-chart-tooltip');if(tip)tip.style.display='none';}
 // Vue motivation : 12 semaines, kilomètres réels, axes distincts course/vélo.
 function homeProgressChart() {
   const mode = homeChartSport;
@@ -1922,9 +1941,15 @@ function homeProgressChart() {
   if(showRun)svg+='<path d="'+path('run',mr)+'" fill="none" stroke="#8acb9b" stroke-width="2.6" stroke-linejoin="round"/>';
   if(showBike)svg+='<path d="'+path('bike',mb)+'" fill="none" stroke="#80aee5" stroke-width="2.6" stroke-linejoin="round"/>';
   data.forEach((d,i)=>{
-    const tip='Semaine du '+fmtS(d.t)+' : course '+d.run.toFixed(1)+' km, vélo '+d.bike.toFixed(1)+' km';
-    for(const [key,max,color] of [['run',mr,'#8acb9b'],['bike',mb,'#80aee5']].filter(x=>(x[0]==='run'&&showRun)||(x[0]==='bike'&&showBike)))
-      svg+='<circle cx="'+X(i)+'" cy="'+Y(d[key],max)+'" r="3.5" fill="'+color+'"><title>'+esc(tip)+'</title></circle>';
+    const label='Semaine du '+fmtS(d.t);
+    const tip=label+' : course '+d.run.toFixed(1)+' km, vélo '+d.bike.toFixed(1)+' km';
+    const series=[['run',mr,'#8acb9b'],['bike',mb,'#80aee5']].filter(x=>(x[0]==='run'&&showRun)||(x[0]==='bike'&&showBike));
+    series.forEach(([key,max,color])=>{
+      const attrs=' data-home-week="'+i+'" data-week-label="'+esc(label)+'" data-run-km="'+d.run+'" data-bike-km="'+d.bike+'" data-x-pct="'+(100*X(i)/360).toFixed(1)+'"';
+      svg+='<circle cx="'+X(i)+'" cy="'+Y(d[key],max)+'" r="4" fill="'+color+'"'+attrs+' tabindex="0" role="button" aria-label="'+esc(tip)+'" onclick="showHomeChartTip('+i+')" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();showHomeChartTip('+i+')}" style="cursor:pointer"><title>'+esc(tip)+'</title></circle>';
+      // Zone de toucher élargie pour les petits écrans, sans masquer les autres points.
+      svg+='<circle cx="'+X(i)+'" cy="'+Y(d[key],max)+'" r="10" fill="transparent" onclick="showHomeChartTip('+i+')" style="cursor:pointer;pointer-events:all"/>';
+    });
     if(i===0||i===3||i===6||i===9||i===11)svg+='<text x="'+X(i)+'" y="162" font-size="10" text-anchor="middle" fill="var(--mut)">'+(i===11?'S0':'S-'+(11-i))+'</text>';
   });
   svg+='</svg>';
@@ -1932,8 +1957,8 @@ function homeProgressChart() {
   return '<div class="card"><h2>Ma progression · 12 semaines</h2>'+
     '<div class="home-chart-filters" role="group" aria-label="Disciplines du graphique">'+[['run','Course'],['bike','Vélo']].map(([k,label])=>'<button type="button" class="'+((k==='run'?showRun:showBike)?'on':'')+'" aria-pressed="'+(k==='run'?showRun:showBike)+'" onclick="toggleHomeChartSport(\''+k+'\')">'+label+'</button>').join('')+'</div>'+
     '<div class="m" style="margin-bottom:9px">'+(showRun?'<span style="color:#8acb9b">●</span> Course · axe gauche':'')+(showRun&&showBike?' &nbsp; ':'')+(showBike?'<span style="color:#80aee5">●</span> Vélo · axe droit':'')+'</div>'+
-    svg+'<div class="row" style="border:0;padding:0">'+(showRun?'<div><b>'+total('run')+' km</b><div class="m">Course à pied</div></div>':'')+(showBike?'<div class="r"><b>'+total('bike')+' km</b><div class="m">Vélo</div></div>':'')+'</div>'+
-    '<div class="m" style="margin-top:8px">Distances réalisées · semaine en cours incluse · touchez un point pour le détail.</div></div>';
+    '<div style="position:relative">'+svg+'<div id="home-chart-tooltip" role="status" aria-live="polite" style="display:none;position:absolute;top:5px;left:50%;transform:translateX(-50%);background:var(--card);color:var(--txt);border:1px solid var(--line);border-radius:10px;padding:8px 12px;box-shadow:0 4px 18px rgba(0,0,0,.18);font-size:12px;line-height:1.6;white-space:nowrap;z-index:2;pointer-events:none"></div></div>'+'<div class="row" style="border:0;padding:0">'+(showRun?'<div><b>'+total('run')+' km</b><div class="m">Course à pied</div></div>':'')+(showBike?'<div class="r"><b>'+total('bike')+' km</b><div class="m">Vélo</div></div>':'')+'</div>'+
+    '</div>';
 }
 // Association prudente : même date et distance proche, sans toucher aux données du programme.
 function homeRunDone(r) {
