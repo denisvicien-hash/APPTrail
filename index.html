@@ -186,6 +186,7 @@ nav button .nav-label{font-size:9px;letter-spacing:0}
 .prog-kpi small{font-size:11px;display:block}
 .prog-note{font-size:12px;color:var(--mut);line-height:1.5;margin:9px 0 0}
 .prog-svg{width:100%;height:auto;display:block}
+.home-chart-filters{display:flex;gap:7px;margin:10px 0 12px}.home-chart-filters button{flex:1;min-width:0;padding:8px 6px;border:1px solid var(--line);border-radius:10px;background:var(--card2);color:var(--mut);font:600 12px system-ui;cursor:pointer}.home-chart-filters button.on{color:var(--txt);border-color:var(--run);background:rgba(138,203,155,.13)}
 /* Navigation mobile : cinq destinations principales, pages secondaires dans Plus */
 .more-menu{display:grid;gap:10px;margin-top:12px}
 .more-link{display:flex;align-items:center;justify-content:space-between;text-align:left;gap:14px;width:100%;padding:17px 16px;background:var(--card2);color:var(--txt);border:1px solid var(--line);border-radius:13px;font:inherit;cursor:pointer}
@@ -300,7 +301,7 @@ const load = (k, d) => { try { const v = JSON.parse(localStorage.getItem(k)); re
 const save = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)) } catch (e) { log('Stockage local plein ou indisponible.') } };
 let cfg = load(KC, {}), acts = load(KA, []), goals = load(KG, null), plan = load(KP, null), prof = load(KF, {}), absences = load(KB, null),
   offs = load(KO, []), feels = load(KR, []), maint = load(KM, []), gears = load(KS, []), chat = load(KH, []), adj = load(KJ, {}), sessEdits = load(KX, {});
-let tab = 'home', filt = 'all', chatBusy = false, progressWeeks = 12, homeWeekOffset = 0; const openK = {}, imgSel = {}, imgTmp = {};
+let tab = 'home', filt = 'all', chatBusy = false, progressWeeks = 12, homeWeekOffset = 0, homeChartSport = 'both'; const openK = {}, imgSel = {}, imgTmp = {};
 let chatThreads = load(KTH, []), archivedChats = load(KAH, []), activeChatId = load(KAC, '');
 // Migration de l'ancien historique unique vers une conversation active indépendante.
 if (!chatThreads.length) {
@@ -1884,8 +1885,19 @@ function currentWeekActuals(t) {
   }).join('');
   return h;
 }
+// Deux filtres indépendants ; au moins une discipline reste affichée.
+function toggleHomeChartSport(sport) {
+  if (sport === 'run') {
+    homeChartSport = homeChartSport === 'both' ? 'bike' : homeChartSport === 'bike' ? 'both' : 'run';
+  } else if (sport === 'bike') {
+    homeChartSport = homeChartSport === 'both' ? 'run' : homeChartSport === 'run' ? 'both' : 'bike';
+  }
+  paint();
+}
 // Vue motivation : 12 semaines, kilomètres réels, axes distincts course/vélo.
 function homeProgressChart() {
+  const mode = homeChartSport;
+  const showRun = mode !== 'bike', showBike = mode !== 'run';
   const end = curWeek();
   const weeks = Array.from({length:12},(_,i)=>end-(11-i)*WK);
   const data = weeks.map(t=>{
@@ -1904,22 +1916,23 @@ function homeProgressChart() {
   for(let i=0;i<=4;i++){
     const y=bottom-(bottom-top)*i/4;
     svg+='<line x1="'+left+'" x2="'+right+'" y1="'+y+'" y2="'+y+'" stroke="var(--mut)" opacity=".22"/>';
-    svg+='<text x="32" y="'+(y+3)+'" font-size="10" text-anchor="end" fill="var(--mut)">'+Math.round(mr*i/4)+'</text>';
-    svg+='<text x="329" y="'+(y+3)+'" font-size="10" fill="var(--mut)">'+Math.round(mb*i/4)+'</text>';
+    if(showRun)svg+='<text x="32" y="'+(y+3)+'" font-size="10" text-anchor="end" fill="var(--mut)">'+Math.round(mr*i/4)+'</text>';
+    if(showBike)svg+='<text x="329" y="'+(y+3)+'" font-size="10" fill="var(--mut)">'+Math.round(mb*i/4)+'</text>';
   }
-  svg+='<path d="'+path('run',mr)+'" fill="none" stroke="#8acb9b" stroke-width="2.6" stroke-linejoin="round"/>';
-  svg+='<path d="'+path('bike',mb)+'" fill="none" stroke="#80aee5" stroke-width="2.6" stroke-linejoin="round"/>';
+  if(showRun)svg+='<path d="'+path('run',mr)+'" fill="none" stroke="#8acb9b" stroke-width="2.6" stroke-linejoin="round"/>';
+  if(showBike)svg+='<path d="'+path('bike',mb)+'" fill="none" stroke="#80aee5" stroke-width="2.6" stroke-linejoin="round"/>';
   data.forEach((d,i)=>{
     const tip='Semaine du '+fmtS(d.t)+' : course '+d.run.toFixed(1)+' km, vélo '+d.bike.toFixed(1)+' km';
-    for(const [key,max,color] of [['run',mr,'#8acb9b'],['bike',mb,'#80aee5']])
+    for(const [key,max,color] of [['run',mr,'#8acb9b'],['bike',mb,'#80aee5']].filter(x=>(x[0]==='run'&&showRun)||(x[0]==='bike'&&showBike)))
       svg+='<circle cx="'+X(i)+'" cy="'+Y(d[key],max)+'" r="3.5" fill="'+color+'"><title>'+esc(tip)+'</title></circle>';
     if(i===0||i===3||i===6||i===9||i===11)svg+='<text x="'+X(i)+'" y="162" font-size="10" text-anchor="middle" fill="var(--mut)">'+(i===11?'S0':'S-'+(11-i))+'</text>';
   });
   svg+='</svg>';
   const total=k=>data.reduce((a,d)=>a+d[k],0).toFixed(0);
   return '<div class="card"><h2>Ma progression · 12 semaines</h2>'+
-    '<div class="m" style="margin-bottom:9px"><span style="color:#8acb9b">●</span> Course · axe gauche &nbsp; <span style="color:#80aee5">●</span> Vélo · axe droit</div>'+
-    svg+'<div class="row" style="border:0;padding:0"><div><b>'+total('run')+' km</b><div class="m">Course à pied</div></div><div class="r"><b>'+total('bike')+' km</b><div class="m">Vélo</div></div></div>'+
+    '<div class="home-chart-filters" role="group" aria-label="Disciplines du graphique">'+[['run','Course'],['bike','Vélo']].map(([k,label])=>'<button type="button" class="'+((k==='run'?showRun:showBike)?'on':'')+'" aria-pressed="'+(k==='run'?showRun:showBike)+'" onclick="toggleHomeChartSport(\''+k+'\')">'+label+'</button>').join('')+'</div>'+
+    '<div class="m" style="margin-bottom:9px">'+(showRun?'<span style="color:#8acb9b">●</span> Course · axe gauche':'')+(showRun&&showBike?' &nbsp; ':'')+(showBike?'<span style="color:#80aee5">●</span> Vélo · axe droit':'')+'</div>'+
+    svg+'<div class="row" style="border:0;padding:0">'+(showRun?'<div><b>'+total('run')+' km</b><div class="m">Course à pied</div></div>':'')+(showBike?'<div class="r"><b>'+total('bike')+' km</b><div class="m">Vélo</div></div>':'')+'</div>'+
     '<div class="m" style="margin-top:8px">Distances réalisées · semaine en cours incluse · touchez un point pour le détail.</div></div>';
 }
 // Association prudente : même date et distance proche, sans toucher aux données du programme.
