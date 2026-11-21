@@ -1217,7 +1217,7 @@ Actions possibles :
 - edit_session : modifier une séance future de course, vélo ou renforcement visible dans le planning. Renseigne sport (run|bike|strength), sessionDate, sessionTitle exacts, date (dans la même semaine), newTitle, newKm (course/vélo) ou newDurationMin (vélo/renforcement), details et workout (structure complète ou null). Mets null pour les champs non modifiés. Ne crée pas de séance et ne modifie jamais une séance réalisée.
 Pour toute séance de course ou vélo de fractionné, fournis workout avec des étapes structurées. Pour le renforcement, fournis workout.exercises avec les exercices, séries, répétitions, repos et tempo.
 - replace_week : remplacer uniquement le contenu d'une semaine future précise, sans modifier les autres semaines ni les objectifs. Format : weekStart (lundi AAAA-MM-JJ), kind (base|spec|recup|taper|race|post), phase, targetRunKm, note, sessions (tableau de séances run|bike|strength avec date, sport, type, title, distanceKm et/ou durationMin, details et workout facultatif). Respecte les jours OFF, la récupération et les contraintes. Cette action doit être proposée puis validée.
-Si les informations indispensables manquent (date, séance cible, distance ou durée selon le cas), pose une question au lieu d'émettre une action. Pour une fatigue ou des courbatures, privilégie une baisse de charge et/ou du repos ; n'ajoute pas d'intensité. Les modifications sont toujours proposées, jamais appliquées automatiquement. Si l'utilisateur demande une refonte, une construction ou une adaptation globale/multi-semaines du programme, produis programProposal complet et laisse actions vide pour les changements couverts par ce programme. Pour une discussion ou un conseil sans demande de modification du plan, programProposal doit être null.`;
+Si les informations indispensables manquent (date, séance cible, distance ou durée selon le cas), pose une question au lieu d'émettre une action. Pour une fatigue ou des courbatures, privilégie une baisse de charge et/ou du repos ; n'ajoute pas d'intensité. Les modifications sont toujours proposées, jamais appliquées automatiquement. Une refonte complète suit le workflow progressif dédié de MENDI ; dans la conversation ordinaire, ne génère pas de programProposal complet. Pour une discussion ou un conseil sans demande de modification du plan, programProposal doit être null.`;
 function coachContext(independent = false) {
   const cur = curWeek(), L = [];
   L.push('Aujourd’hui : ' + todayIso() + ' (' + DN[dow(todayIso())] + ').');
@@ -1436,8 +1436,9 @@ function programProposalDiff(p) {
 function applyProgramProposal(mi) {
   const m = chat[mi], proposal = m && m.programProposal;
   if (!proposal || m.programApplied || m.programRejected || m.programSuperseded || !validProgramProposal(proposal)) return alert('Cette proposition est invalide ou incomplète. Demandez au coach de la régénérer.');
+  if (proposal.sourceSignature && proposal.sourceSignature !== planDraftSignature()) return alert('Ton programme, tes objectifs ou tes contraintes ont changé depuis la génération. Pour préserver ces changements, lance une nouvelle refonte.');
   const count = proposal.weeks.length, runs = proposal.weeks.reduce((n, w) => n + w.sessions.filter(x => x.sport === 'run').length, 0);
-  if (!confirm('Remplacer le programme à venir par cette nouvelle version ?\n\n' + count + ' semaines · ' + runs + ' séances de course à pied\n' + (proposal.summary || '') + '\n\nLes activités réalisées et les semaines passées seront conservées.')) return;
+  if (!confirm('Remplacer le programme à venir par cette nouvelle version ?\n\n' + count + ' semaines · ' + runs + ' séances de course à pied\n' + (proposal.summary || '') + (proposal.warnings && proposal.warnings.length ? '\n\n⚠ '+proposal.warnings.length+' point(s) à vérifier dans la proposition.' : '') + '\n\nLes activités réalisées et les semaines passées seront conservées.')) return;
   const next = proposalToPlan(proposal);
   if (proposal.goals) {
     const byId = new Map(goals.map(g => [g.id, g]));
@@ -1524,6 +1525,7 @@ function resetCoachHistory() {
   chatThreads = [{ id: activeChatId, title: 'Nouvelle discussion', updated: Date.now(), messages: [] }];
   save(KH, chat); save(KTH, chatThreads); save(KAH, archivedChats); save(KAC, activeChatId);
   localStorage.removeItem('bt_comparison_snapshot');
+  planDraft=null;planDraftStore();
   paint();
 }
 function resetCoachFeelings() {
@@ -1540,6 +1542,7 @@ function resetCoachAll() {
   chatThreads = [{ id: activeChatId, title: 'Nouvelle discussion', updated: Date.now(), messages: [] }];
   save(KH, chat); save(KTH, chatThreads); save(KAH, archivedChats); save(KAC, activeChatId); save(KR, feels);
   localStorage.removeItem('bt_comparison_snapshot');
+  planDraft=null;planDraftStore();
   paint();
 }
 function restoreChat(id) {
@@ -1634,8 +1637,109 @@ function applyAct(mi, ai) {
   if (!(plan && plan.source === 'coach')) makePlan(true);
   paint();
 }
+
+// =============================================================
+// REFONTE PROGRESSIVE : état local, un appel IA par clic.
+// Aucune proposition incomplète ne peut être appliquée au planning.
+// =============================================================
+const KPLAN_DRAFT = 'bt_plan_draft_v3';
+let planDraft = load(KPLAN_DRAFT, null);
+function planDraftSignature() {
+  return JSON.stringify({
+    goals:goals.map(g=>[g.id,g.name,g.date,+g.runKm||0,+g.rideKm||0,prioOf(g)]),
+    offs:offs.slice().sort(), absences:absences.map(a=>[a.name,a.start,a.end,+a.runPct||0,!!a.bike]),
+    source:plan&&plan.source||'',gen:plan&&plan.gen||0
+  });
+}
+function planDraftStore() {
+  try {
+    if (planDraft) localStorage.setItem(KPLAN_DRAFT,JSON.stringify(planDraft));
+    else localStorage.removeItem(KPLAN_DRAFT);
+    return true;
+  } catch (_) { alert('Impossible d’enregistrer la refonte sur cet appareil (stockage insuffisant). Les autres données MENDI restent inchangées.');return false; }
+}
+function planFullRequest(text) {
+  const t=String(text||'').toLowerCase();
+  if (/\b(cette semaine|semaine prochaine|une seule semaine|la semaine du)\b/.test(t)
+      && !/\b(refonte complète|programme complet|tout mon programme|plan complet|toutes les semaines)\b/.test(t)) return false;
+  return /\b(refonte|refais (?:mon|le|tout)|reconstruis (?:mon|le|tout)|reconstruire (?:mon|le)|programme complet|tout mon programme|nouveau programme|plan complet|planifie toutes|replanifie toute|construis (?:mon|un) programme|génère (?:mon|un) programme|genere (?:mon|un) programme)\b/.test(t)
+    && !/\b(sans (?:modifier|changer|refaire|reconstruire)|ne (?:refais|reconstruis|modifie|veux) pas|pas de refonte|seulement une analyse|simple analyse|avant de|est.ce que|que penses.tu|serait.ce utile|devrais.je)\b/.test(t);
+}
+function abandonPlanDraft() {
+  if (chatBusy || !planDraft) return;
+  if (!confirm('Abandonner cette refonte en cours ? Les semaines déjà générées seront effacées de cet appareil. Le programme actuel restera intact.')) return;
+  planDraft=null;planDraftStore();paint();
+}
+function beginPlanDraft(message) {
+  if (chatBusy || !cfg.aiEndpoint) return;
+  if (planDraft && !confirm('Une refonte est déjà sauvegardée. La remplacer ? Les blocs déjà obtenus seraient perdus.')) return;
+  const data=coachProgramData();
+  // Les générations sauvegardées doivent être indépendantes d'anciennes propositions non validées.
+  delete data.pendingProposal;
+  const text=String(message||'').trim()||'Refais mon programme jusqu’à mon dernier objectif enregistré.';
+  chat.push({r:'u',t:text});persistChat();
+  const msgs=chat.filter(m=>!m.err).slice(-10).map(m=>({role:m.r==='u'?'user':'assistant',content:m.t}));
+  while(msgs.length&&msgs[0].role!=='user')msgs.shift();
+  // Le dernier message utilisateur est nécessaire pour garder l'intention explicite.
+  planDraft={version:3,startedAt:Date.now(),signature:planDraftSignature(),
+    context:coachContext(),program:data,messages:msgs,outline:null,weeks:[],warnings:[],lastError:''};
+  if (!planDraftStore()) {planDraft=null;return;}
+  continuePlanDraft();
+}
+function planDraftRemaining() {
+  if (!planDraft||!planDraft.outline||!Array.isArray(planDraft.outline.weeks)) return [];
+  const stored=new Set((planDraft.weeks||[]).map(w=>w.weekStart));
+  return planDraft.outline.weeks.filter(w=>!stored.has(w.weekStart));
+}
+async function continuePlanDraft() {
+  if (chatBusy||!planDraft||!cfg.aiEndpoint)return;
+  if (planDraftSignature()!==planDraft.signature) {
+    planDraft.lastError='Tes objectifs, contraintes ou ton programme ont changé depuis le début de cette refonte. Pour éviter d’écraser ces changements, abandonne la refonte et recommence avec les données actuelles.';
+    planDraftStore();paint();return;
+  }
+  const step=planDraft.outline?'weeks':'strategy';
+  chatBusy=true;planDraft.lastError='';paint();
+  try {
+    const res=await fetch(cfg.aiEndpoint,{method:'POST',headers:{'content-type':'application/json'},
+      body:JSON.stringify({planStep:step,system:COACH_SYS+COACH_DATA_SYS,context:planDraft.context,
+        program:planDraft.program,messages:planDraft.messages,modelChoice:['luna','terra','sol'].includes(cfg.coachModel)?cfg.coachModel:'luna',
+        outline:planDraft.outline,completedWeeks:planDraft.weeks})});
+    if (!res.ok) throw new Error('HTTP '+res.status+' · '+(await res.text()).slice(0,200));
+    const result=await res.json();
+    if(result.stage==='error')throw new Error(result.reply||'Étape non disponible.');
+    if(step==='strategy') {
+      if(result.stage!=='strategy'||!result.outline||!Array.isArray(result.outline.weeks)||!result.outline.weeks.length) throw new Error('Stratégie absente ou incomplète. Relance cette seule étape.');
+      planDraft.outline=result.outline;
+      if (Array.isArray(result.outline.warnings)) planDraft.warnings.push(...result.outline.warnings);
+    } else {
+      if(result.stage!=='weeks'||!Array.isArray(result.weeks))throw new Error('Bloc de séances non reconnu. Relance seulement cette étape.');
+      const byDate=new Map(planDraft.weeks.map(w=>[w.weekStart,w]));
+      const allowed=new Set(planDraft.outline.weeks.map(w=>w.weekStart));
+      for(const w of result.weeks) if(w&&allowed.has(w.weekStart)&&Array.isArray(w.sessions))byDate.set(w.weekStart,w);
+      planDraft.weeks=planDraft.outline.weeks.filter(w=>byDate.has(w.weekStart)).map(w=>byDate.get(w.weekStart));
+      if(Array.isArray(result.warnings))planDraft.warnings.push(...result.warnings);
+      if(!result.weeks.length)planDraft.lastError='Ce bloc n’a produit aucune semaine exploitable. Les semaines déjà obtenues sont conservées : tu peux réessayer avec Luna ou choisir Terra pour cette étape uniquement.';
+    }
+    if (!planDraftStore()) throw new Error('Impossible de sauvegarder la progression ; ne ferme pas l’application.');
+    const missing=planDraftRemaining();
+    if(planDraft.outline && missing.length===0) {
+      const proposal={summary:planDraft.outline.summary||'Refonte de Coach MENDI',goalName:planDraft.outline.goalName||'Objectifs MENDI',
+        phases:planDraft.outline.phases||[],weeks:planDraft.weeks,
+        warnings:[...new Set(planDraft.warnings)].slice(0,100),sourceSignature:planDraft.signature};
+      normalizeProgramProposal(proposal);
+      if(!validProgramProposal(proposal))throw new Error('La proposition finale comporte un problème de données non corrigible localement. Les semaines sont conservées : aucune modification appliquée.');
+      chat.forEach(m=>{if(m.r==='a'&&m.programProposal&&!m.programApplied&&!m.programRejected)m.programSuperseded=true;});
+      chat.push({r:'a',t:'La refonte est complète : '+proposal.weeks.length+' semaines générées. Aucune séance n’a encore été modifiée. Consulte les avertissements et le détail des semaines, puis valide ou refuse le nouveau programme.',actions:[],applied:[],programProposal:proposal,programApplied:false});
+      persistChat();planDraft=null;planDraftStore();
+    }
+  }catch(e){
+    if(planDraft){planDraft.lastError=String(e&&e.message||e).slice(0,500);planDraftStore();}
+  }finally{chatBusy=false;paint();}
+}
+
 async function sendCoach(text) {
   text = (text || ($('#cin') ? $('#cin').value : '')).trim(); if (!text || chatBusy) return;
+  if (planFullRequest(text)) return beginPlanDraft(text);
   chat.push({ r: 'u', t: text });
   if (!cfg.aiEndpoint) {
     chat.push({ r: 'a', t: 'Pour discuter avec le coach, configurez l’adresse du relais OpenAI dans Réglages > Coach IA. Les conseils rapides du ressenti restent disponibles sans connexion.', actions: [], applied: [], err: true });
@@ -1684,7 +1788,7 @@ function vAppearance(){
 function vAIModels(){
   const current=['luna','terra','sol'].includes(cfg.coachModel)?cfg.coachModel:'luna';
   const options=[['luna','Luna','Questions, review hebdomadaire et modifications ponctuelles · économique'],['terra','Terra','Création et refonte de programmes · plus coûteux'],['sol','Sol','Planification approfondie · coût le plus élevé']];
-  return '<div class="card"><h2>Intelligence artificielle</h2><p class="m">Choisissez le modèle utilisé pour tous les appels du coach, y compris les corrections automatiques. Le choix est conservé sur cet appareil.</p>'+
+  return '<div class="card"><h2>Intelligence artificielle</h2><p class="m">Choisissez le modèle utilisé pour chaque appel du coach et chaque étape de refonte. Aucun appel de réparation automatique payant. Le choix est conservé sur cet appareil.</p>'+
     options.map(o=>'<label style="display:flex;align-items:flex-start;gap:10px;padding:12px;border:1px solid var(--line);border-radius:12px;margin:8px 0;cursor:pointer"><input type="radio" name="coachmodel" style="width:auto;margin:3px 0 0" value="'+o[0]+'" '+(current===o[0]?'checked':'')+' onchange="selectCoachModel(this.value)"><span><b>'+o[1]+(o[0]==='luna'?' · par défaut':'')+'</b><small class="m" style="display:block;margin-top:3px">'+o[2]+'</small></span></label>').join('')+
     '<p class="m">Aucun changement automatique de modèle : une demande de programme complet reste sur le modèle choisi. Luna peut nécessiter plus de tentatives pour les programmes longs.</p><button class="b alt" onclick="goTab(\'cfg\')">Retour aux réglages</button></div>';
 }
@@ -1714,7 +1818,19 @@ function coachPage() {
     '<button onclick="quickCoach(\'Propose-moi une séance de renforcement adaptée à ma préparation trail et à ma récupération. Indique la durée totale en minutes, échauffement, exercices, repos, transitions et retour au calme compris.\')">✚ &nbsp;Renforcement musculaire</button>' +
     '<button onclick="quickCoach(\'Aide-moi à préparer mon prochain trail en tenant compte de mon programme.\')">⌁ &nbsp;Préparer mon trail</button></div></section>';
   h += '<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><h2 style="margin:0">Discussion en cours</h2><span class="chip">' + chat.length + ' messages</span></div>';
-  h += '<div class="chat-tools" style="margin-top:10px"><button class="b alt" onclick="newChat()">＋ Nouvelle discussion</button><button class="b alt" onclick="archiveOnly()">Archiver</button><button class="b alt" onclick="clearChat()">Vider</button></div>' + '<button class="b" style="width:100%;margin-top:10px" onclick="requestPlanChange()" ' + (chatBusy || !cfg.aiEndpoint ? 'disabled' : '') + '>✓ Construire / revoir tout mon programme</button><small class="m" style="display:block;margin-top:5px">Modèle sélectionné : '+coachModelName()+'. Les programmes longs peuvent être coûteux ou incomplets avec Luna. Le coach prépare une nouvelle version complète à partir de vos objectifs, de vos activités et de notre discussion. Rien ne change sans votre validation.</small>';
+  h += '<div class="chat-tools" style="margin-top:10px"><button class="b alt" onclick="newChat()">＋ Nouvelle discussion</button><button class="b alt" onclick="archiveOnly()">Archiver</button><button class="b alt" onclick="clearChat()">Vider</button></div>';
+  if (planDraft) {
+    const total=planDraft.outline?.weeks?.length||0,completed=planDraft.weeks?.length||0;
+    h += '<div class="adv" style="margin-top:10px"><b>Refonte sauvegardée sur cet appareil</b>' +
+      '<div class="m" style="margin:5px 0">'+(total ? completed+' / '+total+' semaines disponibles' : 'Étape 1 : stratégie sportive')+ '. Chaque clic déclenche au maximum un appel IA avec '+coachModelName()+'. Les semaines précédentes sont conservées.</div>'+
+      (planDraft.lastError?'<div class="wn" style="margin:7px 0">'+esc(planDraft.lastError)+'</div>':'')+
+      '<button class="b" style="width:100%;margin-top:8px" onclick="continuePlanDraft()" '+(chatBusy||!cfg.aiEndpoint?'disabled':'')+'>'+(chatBusy?'Appel en cours…':total?'▶ Générer les prochaines semaines':'▶ Générer la stratégie')+'</button>'+
+      '<button class="b alt" style="margin-top:6px" onclick="abandonPlanDraft()" '+(chatBusy?'disabled':'')+'>Abandonner cette refonte</button>'+
+      '<small class="m" style="display:block;margin-top:7px">Données locales à cet appareil / navigateur : ne pas vider les données du site durant la refonte.</small></div>';
+  } else {
+    h += '<button class="b" style="width:100%;margin-top:10px" onclick="requestPlanChange()" '+(chatBusy||!cfg.aiEndpoint?'disabled':'')+'>✓ Construire / revoir tout mon programme</button>'+
+    '<small class="m" style="display:block;margin-top:5px">Planification par étapes (stratégie, puis blocs de 4 semaines). Chaque étape utilise un seul appel IA, sans correction automatique payante. Tu peux commencer avec Luna et choisir Terra pour une étape difficile. Rien ne change sans validation.</small>';
+  }
   if (!cfg.aiEndpoint) h += '<div class="adv warn" style="margin-top:12px">Le coach n’est pas connecté. Configurez l’adresse du relais OpenAI dans Réglages → Coach IA.</div>';
   if (!chat.length) h += '<div class="msg a" style="margin-top:14px">Bonjour ! Je peux vous aider à adapter votre préparation, analyser votre fatigue et équilibrer course, vélo et renforcement. Que souhaitez-vous travailler aujourd’hui ?</div>';
   h += '<div class="coach-messages" style="margin-top:12px">';
@@ -1732,6 +1848,7 @@ function coachPage() {
         '<div class="m">' + weekCount + ' semaines · ' + runCount + ' séances de course · ' + bikeCount + ' séances vélo · ' + strengthCount + ' séances de renforcement</div>' +
         (function(){ const d = programProposalDiff(pp); return '<div class="adv" style="margin-top:8px"><b>Comparaison avec le programme actuel</b><div class="m">' + d.addedOrChanged + ' séance(s) nouvelle(s) ou modifiée(s) · ' + d.removedOrChanged + ' séance(s) retirée(s) ou remplacée(s)</div><div class="m">' + d.oldCount + ' séance(s) actuellement planifiée(s) → ' + d.nextCount + ' dans la proposition</div></div>'; })() +
         (pp.phases && pp.phases.length ? '<div style="margin-top:8px">' + pp.phases.map(ph => '<div class="m">• ' + esc(ph.name || ph.title || '') + (ph.description ? ' : ' + esc(ph.description) : '') + '</div>').join('') + '</div>' : '') +
+        (pp.warnings && pp.warnings.length ? '<details class="adv warn" style="margin-top:9px"><summary><b>⚠ '+pp.warnings.length+' points à vérifier avant validation</b></summary><div style="margin-top:7px">'+pp.warnings.map(x=>'<div class="m">• '+esc(x)+'</div>').join('')+'</div></details>' : '') +
         '<details style="margin-top:9px"><summary><b>Aperçu des semaines</b> <span class="m">· Afficher</span></summary>' + pp.weeks.map(w => '<div class="row"><div><b>' + fmtD(w.weekStart) + ' · ' + esc(w.phase) + '</b><div class="m">' + w.sessions.map(x => esc(x.title) + (x.sport === 'run' ? ' (' + x.distanceKm + ' km)' : '') + (x.workout && x.workout.steps ? ' · séance détaillée' : '') + (x.workout && x.workout.exercises ? ' · exercices détaillés' : '')).join(' · ') + w.sessions.map(x => workoutMarkup(x.workout, x.details)).join('') + '</div></div><div class="r">' + (+w.targetRunKm).toFixed(0) + ' km</div></div>').join('') + '</details>' +
         (!m.programApplied && !m.programRejected && !m.programSuperseded ? '<button class="b" onclick="applyProgramProposal(' + mi + ')">Valider le nouveau programme</button><button class="b alt" onclick="rejectProgramProposal(' + mi + ')">Refuser cette proposition</button>' : '') + '</div>';
     }
@@ -1754,9 +1871,11 @@ function coachPage() {
 }
 function quickCoach(text) { const input = $('#cin'); if (input) input.value = text; sendCoach(text); }
 function requestPlanChange() {
-  if (chatBusy || !cfg.aiEndpoint) return;
-  sendCoach('À partir de notre discussion, de mes objectifs, de mon profil, de mes activités et de mon programme actuel, construis une nouvelle version complète et cohérente de mon programme jusqu’au dernier objectif enregistré. Revois librement les phases, les semaines et les séances à venir. Intègre course à pied, vélo et renforcement lorsque c’est pertinent. Conserve les objectifs existants sauf si notre discussion demande explicitement de les modifier. Retourne une proposition structurée complète, sans appliquer aucun changement. Si une information réellement indispensable manque, pose une seule question et ne génère pas de programme incomplet.');
+  if(chatBusy||!cfg.aiEndpoint)return;
+  if(planDraft)return continuePlanDraft();
+  beginPlanDraft('À partir de notre discussion, de mes objectifs enregistrés, de mon profil, de mes activités et de mon programme actuel, réalise une refonte complète jusqu’au dernier objectif. Organise les phases, les séances de qualité, les sorties longues, le vélo, le renforcement et la récupération. Respecte mes disponibilités. La refonte doit être présentée pour validation, sans rien appliquer.');
 }
+
 function archiveOnly() {
   if (!chat.length) return alert('Cette discussion est déjà vide.');
   if (!confirm('Archiver cette discussion ? Elle restera disponible dans l’historique.')) return;
