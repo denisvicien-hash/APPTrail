@@ -706,7 +706,7 @@ function physioText() {
 }
 const COACH_DATA_SYS = `
 
-Données physiologiques détaillées : athlete.physiology contient les zones de FC en bpm, la charge d'entraînement (atl7d = fatigue, ctl42d = forme, acwr = ratio aigu/chronique : au-dessus de 1,3 sois prudent, sous 0,8 la charge est faible, form = ctl - atl), la répartition du temps par zone sur 28 jours (en base, vise environ 80 % en Z1-Z2), les meilleurs efforts (secondes) et un VDOT estimé. Chaque élément de athlete.recentActivities peut avoir analysis : zonesMin (minutes en Z1..Z5), cardiacDriftPct (dérive cardiaque ; au-delà de 5 % sur une sortie facile, travaille l'endurance de base ou tiens compte de la chaleur et de la fatigue), ascentM/descentM, climb et descent (minutes, FC moyenne, VAM en m/h, vitesse), best et power (meilleurs efforts) et curve (FC, vitesse et altitude échantillonnées à distance égale, du départ à l'arrivée : repère la dérive, l'effondrement en fin de sortie et la gestion des descentes). Utilise ces chiffres pour calibrer les FC cibles, les allures, les volumes et la place du renforcement, et cite ceux dont tu te sers. Si une donnée est absente (analysis manquant, charge estimée faute de FC), dis-le au lieu de l'inventer. N'interprète pas ces données comme un avis médical.`;
+Données physiologiques détaillées : athlete.physiology contient les zones de FC en bpm, la charge d'entraînement (atl7d = fatigue, ctl42d = forme, acwr = ratio aigu/chronique (indicateur descriptif à interpréter avec prudence, sans seuil universel de risque de blessure), form = ctl - atl), la répartition du temps par zone sur 28 jours (l’endurance facile est souvent majoritaire, sans imposer de ratio universel 80/20), les meilleurs efforts (secondes) et un VDOT estimé. Chaque élément de athlete.recentActivities peut avoir analysis : zonesMin (minutes en Z1..Z5), cardiacDriftPct (dérive cardiaque ; à interpréter selon durée, terrain, chaleur, hydratation et fatigue, sans seuil diagnostique fixe), ascentM/descentM, climb et descent (minutes, FC moyenne, VAM en m/h, vitesse), best et power (meilleurs efforts) et curve (FC, vitesse et altitude échantillonnées à distance égale, du départ à l'arrivée : repère la dérive, l'effondrement en fin de sortie et la gestion des descentes). Utilise ces chiffres pour calibrer les FC cibles, les allures, les volumes et la place du renforcement, et cite ceux dont tu te sers. Si une donnée est absente (analysis manquant, charge estimée faute de FC), dis-le au lieu de l'inventer. N'interprète pas ces données comme un avis médical.`;
 
 /* ---------- Démo, sauvegarde, reset ---------- */
 function demo() {
@@ -1265,6 +1265,7 @@ function coachProgramData(independent = false) {
   const pending = [...chat].reverse().find(m => m.r === 'a' && m.programProposal && !m.programApplied && !m.programRejected && !m.programSuperseded);
   return {
     today: todayIso(),
+    planSource: plan && plan.source === 'coach' ? 'coach' : 'auto',
     athlete: {
       profile: { ...coachAthleteProfile(), weeklyRunKm: startStats().vol, longestRunKm: startStats().long, weeklyBikeMinutes: startStats().bike, commuteKmLast4Weeks: [4,3,2,1].reduce((n,i)=>n+commuteWeek(cur-i*WK).km,0) },
       weeklyHistory,
@@ -1391,7 +1392,9 @@ function validProgramProposal(p) {
 function proposalToPlan(p) {
   const cur = curWeek();
   const firstProposalWeek = tOf(p.weeks[0].weekStart);
-  const preserveThrough = firstProposalWeek < cur ? cur : cur - WK;
+  // Si la proposition commence lundi prochain, conserver toute la semaine actuelle.
+  // L'ancienne condition supprimait silencieusement la semaine courante.
+  const preserveThrough = firstProposalWeek > cur ? cur : cur - WK;
   const past = plan && Array.isArray(plan.weeks) ? plan.weeks.filter(w => w.t <= preserveThrough) : [];
   const fresh = p.weeks.filter(w => tOf(w.weekStart) > preserveThrough).map(w => {
     const runs = w.sessions.filter(x => x.sport === 'run' && x.date >= todayIso()).map(x => ({
@@ -1411,7 +1414,10 @@ function proposalToPlan(p) {
 }
 function programProposalDiff(p) {
   const oldSessions = [];
-  (plan && plan.weeks ? plan.weeks : []).filter(w => w.t >= curWeek()).forEach(w => {
+  // Comparer uniquement les semaines réellement remplacées par la proposition.
+  // Les semaines précédentes (dont celle en cours) sont conservées.
+  const comparisonStart = tOf(p.weeks[0].weekStart);
+  (plan && plan.weeks ? plan.weeks : []).filter(w => w.t >= comparisonStart).forEach(w => {
     assignDays(w).filter(r => r.iso && r.iso >= todayIso()).forEach(r => oldSessions.push({
       date: r.iso, sport: 'run', title: r.t, distanceKm: +r.km || 0
     }));
