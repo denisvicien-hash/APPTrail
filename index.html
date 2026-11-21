@@ -2313,10 +2313,17 @@ const EXLIB = [["Squat", "Jambes", "Débutant", "Pieds largeur des épaules, rec
 // Fiches pédagogiques illustrées. Les images sont locales : aucune dépendance YouTube.
 const EX_IMAGES = {
  'Squat':'assets/renfo/squat.png',
+ 'Fente arrière':'assets/renfo/fente-arriere.png',
  'Pont fessier':'assets/renfo/pont-fessier.png',
  'Mollets debout':'assets/renfo/mollets-debout.png',
  'Gainage ventral':'assets/renfo/gainage-ventral.png',
- 'Bird-dog':'assets/renfo/bird-dog.png'
+ 'Bird-dog':'assets/renfo/bird-dog.png',
+ 'Montée sur marche':'assets/renfo/step-up.png',
+ 'Gainage latéral':'assets/renfo/gainage-lateral.png',
+ 'Dead bug':'assets/renfo/dead-bug.png',
+ 'Pompes inclinées':'assets/renfo/pompes-inclinees.png',
+ 'Soulevé de terre unilatéral sans charge':'assets/renfo/souleve-terre-unilateral.png',
+ 'Chaise contre un mur':'assets/renfo/chaise-mur.png'
 };
 const EX_DETAILS = {
  'Squat':{muscles:'Quadriceps, fessiers, gainage',errors:['Talons décollés','Genoux qui s’effondrent vers l’intérieur','Dos arrondi'],variation:'Squat vers une chaise stable'},
@@ -2350,11 +2357,11 @@ function vExercises(){
  .renfo-page .exlib-filter button{border:1px solid var(--line);border-radius:999px;padding:8px 12px;background:transparent;color:var(--tx)}\
  .renfo-page .exlib-filter button.active{background:var(--acc);color:#fff;border-color:var(--acc)}\
  .renfo-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,330px),1fr));gap:18px}\
- .renfo-card{border:1px solid var(--line);border-radius:20px;overflow:hidden;background:rgba(128,128,128,.035)}\
- .renfo-card-head{padding:16px 16px 8px}\
+ .renfo-card{border:1px solid var(--line);border-radius:20px;overflow:hidden;background:rgba(128,128,128,.035);padding:12px;display:flex;flex-direction:column;gap:12px}\
+ .renfo-card-head{padding:4px 5px 0}\
  .renfo-card h3{margin:0 0 4px;font-size:1.1rem}\
- .renfo-visual{display:block;border:0;background:transparent;width:100%;padding:0;cursor:zoom-in}\
- .renfo-visual img{display:block;width:100%;height:auto;aspect-ratio:1/1;object-fit:contain;background:#fff}\
+ .renfo-visual{display:block;border:1px solid var(--line);border-radius:14px;overflow:hidden;background:#fff;width:100%;padding:5px;cursor:zoom-in;box-shadow:0 4px 16px rgba(0,0,0,.08)}\
+ .renfo-visual img{display:block;width:100%;height:auto;object-fit:contain;background:#fff;border-radius:9px}\
  .renfo-pending{margin:8px 16px;border:1px dashed var(--line);border-radius:14px;padding:20px 16px;background:rgba(128,128,128,.04)}\
  .renfo-pending strong{display:block;margin-bottom:6px}\
  .renfo-card-body{padding:12px 16px 16px}\
@@ -2367,13 +2374,12 @@ function vExercises(){
  .renfo-zoom img{display:block;max-width:min(96vw,1100px);max-height:92vh;object-fit:contain;border-radius:12px}\
  .renfo-close{position:fixed;right:18px;top:18px;background:#fff;color:#111;border:0;border-radius:999px;width:42px;height:42px;font-size:22px;cursor:pointer}\
  </style><h2>Bibliothèque de renforcement</h2>'+
- '<p class="m">Fiches illustrées consultables sans YouTube. Touchez une image pour l’agrandir. Les consignes et les exercices du programme sont conservés.</p>'+
+ '<p class="m">Touchez une fiche pour l’agrandir.</p>'+
  '<div class="exlib-filter">'+filters.map(f=>'<button class="'+(f===exlibFilter?'active':'')+'" onclick="setExlibFilter('+JSON.stringify(f).replace(/"/g,'&quot;')+')">'+esc(f)+'</button>').join('')+'</div>'+
  '<div class="renfo-grid">'+list.map(e=>{const d=EX_DETAILS[e[0]]||{};const src=EX_IMAGES[e[0]];
  return '<article class="renfo-card"><div class="renfo-card-head"><h3>'+esc(e[0])+'</h3><small>'+esc(e[1])+' · '+esc(e[2])+'</small></div>'+
  (src?'<button class="renfo-visual" type="button" onclick="exZoom('+JSON.stringify(src).replace(/"/g,'&quot;')+','+JSON.stringify(e[0]).replace(/"/g,'&quot;')+')" aria-label="Agrandir la fiche '+esc(e[0])+'"><img loading="lazy" src="'+src+'" alt="Étapes illustrées et muscles sollicités : '+esc(e[0])+'"></button>':'<div class="renfo-pending"><strong>Illustration anatomique à finaliser</strong><span class="m">Les consignes restent disponibles ci-dessous. Aucune image d’un exercice différent n’est utilisée.</span></div>')+
- '<div class="renfo-card-body"><p><b>Exécution :</b> '+esc(e[3])+'</p><p><b>Point clé :</b> '+esc(e[4])+'</p><p><b>Muscles :</b> '+esc(d.muscles||'')+'</p></div>'+
- '<details><summary>Erreurs à éviter et variante</summary><b>Erreurs fréquentes</b><ul>'+(d.errors||[]).map(v=>'<li>'+esc(v)+'</li>').join('')+'</ul><p><b>Plus facile :</b> '+esc(d.variation||'')+'</p></details></article>'}).join('')+'</div>'+
+ '</article>'}).join('')+'</div>'+
  '<p class="m" style="margin-top:18px">Les séries, répétitions et temps de récupération sont définis dans chaque séance par le programme et le coach MENDI. En cas de douleur inhabituelle, interrompez l’exercice.</p></div>';
 }
 function vMore(){
